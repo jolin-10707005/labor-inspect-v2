@@ -1,0 +1,11 @@
+name = "labor-inspect"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "labor-inspect-db"
+database_id = "96c52769-8d79-4c87-ac7f-be42294101b5"
