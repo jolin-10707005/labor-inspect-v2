@@ -394,13 +394,13 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
       <!-- 店型選擇 -->
       <div class="sec-lbl">查核店型<span class="req">*</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px" id="store-type-selector">
-        <button class="store-type-btn" id="btn-type-rc" onclick="selectStoreType('RC')"
+        <button class="store-type-btn" id="btn-type-rc" onclick="return false" disabled title="店型依點檢日期自動判定"
           style="padding:16px;border:2px solid var(--border);border-radius:var(--r);background:#fff;cursor:pointer;font-family:inherit;transition:.15s">
           <div style="font-size:24px;margin-bottom:6px">🏪</div>
           <div style="font-size:15px;font-weight:700;color:var(--text)">直營店（RC）</div>
           <div style="font-size:12px;color:var(--text3);margin-top:3px">排班、出勤、工時薪資</div>
         </button>
-        <button class="store-type-btn" id="btn-type-fc" onclick="selectStoreType('FC')"
+        <button class="store-type-btn" id="btn-type-fc" onclick="return false" disabled title="店型依點檢日期自動判定"
           style="padding:16px;border:2px solid var(--border);border-radius:var(--r);background:#fff;cursor:pointer;font-family:inherit;transition:.15s">
           <div style="font-size:24px;margin-bottom:6px">🏬</div>
           <div style="font-size:15px;font-weight:700;color:var(--text)">加盟店（FC）</div>
@@ -1019,6 +1019,8 @@ async function doLogin(){
   const person=PERSONNEL.find(p=>p.id===personId);
   if(!person){errEl.textContent='找不到人員資料';errEl.style.display='block';return;}
   errEl.style.display='none';
+  // 立即顯示進度條
+  showLoading('驗證帳號中…');
   // ② 直接以工號向 GAS 人員工號表格驗證（繞過 api() 避免 401 自動登出）
   try{
     const url=new URL(GAS_URL);
@@ -1027,9 +1029,10 @@ async function doLogin(){
     url.searchParams.set('d',btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
     const r=await fetch(url.toString(),{method:'POST',body:JSON.stringify(payload),redirect:'follow'});
     const d=await r.json();
-    if(!d.token){errEl.textContent='工號驗證失敗，請確認工號或聯絡管理員';errEl.style.display='block';return;}
+    if(!d.token){hideLoading();errEl.textContent='工號驗證失敗，請確認工號或聯絡管理員';errEl.style.display='block';return;}
     token=d.token;
-  }catch(e){errEl.textContent='無法連線至伺服器，請確認網路';errEl.style.display='block';return;}
+    showLoading('載入中… 同步題目與店舖資料');
+  }catch(e){hideLoading();errEl.textContent='無法連線至伺服器，請確認網路';errEl.style.display='block';return;}
   // ③ 登入成功，帶入完整人員資訊
   currentUser={id:person.id,name:person.name,dept:person.dept,section:person.section,username:person.name};
   localStorage.setItem('ci_token',token);
@@ -1052,7 +1055,6 @@ function doLogout(){
 async function initApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
-  showLoading('載入中… 同步題目與店舖資料');
   try{
   const now=new Date(),pad=n=>String(n).padStart(2,'0');
   document.getElementById('inspect-dt').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -1155,6 +1157,23 @@ async function onInspectDtChange(){
 }
 
 // ─── 店型鎖定（不再強制鎖定，僅做選定提示）───
+async function applyStoreTypeLock(type){
+  // 改為呼叫自動偵測：依當前月份載入對應題目
+  if(type){
+    currentStoreType=type;
+    const dtVal=document.getElementById('inspect-dt')?.value||'';
+    const month=dtVal?parseInt(dtVal.slice(5,7)):(new Date().getMonth()+1);
+    try{
+      categories=await cachedApi(`/api/checklist?store_type=${type}&month=${month}`);
+      initAnswers();
+    }catch(e){console.error('applyStoreTypeLock:',e);}
+  } else {
+    await autoDetectStoreType();
+  }
+}
+function clearStoreTypeLock(){
+  lockedStoreType=null;
+}
 // 首次點檢店型確認（Modal 裡的按鈕呼叫）
 function confirmFirstStoreType(type){
   // 關閉 Modal
