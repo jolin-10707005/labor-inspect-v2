@@ -1,4 +1,4 @@
-﻿// ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
 // 勞檢查核平台 — Google Apps Script 後端
 // ══════════════════════════════════════════════
 
@@ -268,61 +268,36 @@ function route(e, httpMethod) {
 // ── 登入 ──
 function handleLogin(body) {
   const { username, password } = body;
+
+  // 工號正規化：去除前置零後比對（Sheets 會將數字欄轉為 number 導致前置零消失）
   function normId(v) { return String(v).replace(/^0+/, '') || '0'; }
 
-  // 參數長度限制（依 CheckUserId API 規格）
-  const userId = String(username || '').substring(0, 15);
-  const psw    = String(password || '').substring(0, 30);
-  if (!userId || !psw) return fail('請輸入帳號和密碼', 400);
-
-  // ① 呼叫日翊 CheckUserId AD 驗證 API
-  let adVerified = false;
-  try {
-    const resp = UrlFetchApp.fetch('https://eip.fme.com.tw/FMEIP/AasApi/CheckUserId', {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify({ USER_ID: userId, PSW: psw }),
-      muteHttpExceptions: true
-    });
-    const text = resp.getContentText();
-    let data;
-    try { data = JSON.parse(text); } catch (e) { return fail('AD 驗證回應格式錯誤', 500); }
-    const code = String(data.MSG || '').split(' ')[0];
-
-    if (code === '000') {
-      adVerified = true;
-    } else {
-      const errMap = {
-        '100': '帳號或密碼錯誤',
-        '200': 'AD 認證錯誤',
-        '998': '系統暫時無法使用，請稍後再試',
-        '999': '系統發生錯誤，請聯絡管理員'
-      };
-      return fail(errMap[code] || ('AD 驗證失敗（' + code + '）'), 401);
-    }
-  } catch (e) {
-    return fail('無法連線至日翊 AD 認證系統：' + e.message, 500);
-  }
-
-  if (!adVerified) return fail('AD 驗證失敗', 401);
-
-  // ② AD 驗證通過後，從人員工號 sheet 取得姓名等附加資訊
-  let safe = { id: userId, username: userId, role: 'inspector', full_name: '' };
+  // ① 優先從人員工號 sheet 比對（欄位：工號、姓名）
   const personnelSheet = getSheet('人員工號');
   if (personnelSheet) {
-    const sdata = personnelSheet.getDataRange().getValues();
-    const headers = sdata[0];
+    const data = personnelSheet.getDataRange().getValues();
+    const headers = data[0];
     const idxEmpid = headers.indexOf('工號');
     const idxName  = headers.indexOf('姓名');
     if (idxEmpid >= 0) {
-      const match = sdata.slice(1).find(row => normId(row[idxEmpid]) === normId(userId));
+      const match = data.slice(1).find(row => normId(row[idxEmpid]) === normId(username));
       if (match) {
+        // 工號驗證：username === password（工號即密碼）
+        if (normId(username) !== normId(password)) return fail('工號錯誤', 401);
         const empid = String(match[idxEmpid]).replace(/\.0$/, '');
         const name  = idxName >= 0 ? String(match[idxName]) : '';
-        safe = { id: empid, username: empid, role: 'inspector', full_name: name };
+        const safe  = { id: empid, username: empid, role: 'inspector', full_name: name };
+        return ok({ token: makeToken(safe), user: safe });
       }
+      return fail('工號不存在，請聯絡管理員', 401);
     }
   }
+
+  // ② 退回舊版 users sheet 比對（相容舊帳號）
+  const users = sheetToObjects('users');
+  const u = users.find(r => String(r.username) === String(username) && String(r.password) === String(password));
+  if (!u) return fail('帳號或密碼錯誤', 401);
+  const safe = { id: u.id, username: u.username, role: u.role, full_name: u.full_name };
   return ok({ token: makeToken(safe), user: safe });
 }
 
@@ -668,8 +643,12 @@ function handleSetAssigned(body) {
 // ── 防重複 ──
 function handleCheckDuplicate(body) {
   const { store_code, audit_date } = body;
+  // 修正：Sheets 會把日期欄轉成 Date 物件，必須先 toDateStr 後再比對
+  // store_code 也要 pad6 處理（數字會被 Sheets 自動轉換）
+  const targetCode = pad6(store_code);
+  const targetDate = String(audit_date || '').slice(0, 10);
   const list = sheetToObjects('inspections');
-  const existing = list.find(r => r.store_code === store_code && r.audit_date === audit_date);
+  const existing = list.find(r => pad6(r.store_code) === targetCode && toDateStr(r.audit_date) === targetDate);
   return ok({ exists: !!existing, id: existing ? existing.id : null });
 }
 

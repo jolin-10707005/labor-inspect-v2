@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>勞檢查核平台｜全家RC店日翊查核</title>
 <script src="data-personnel.js"></script>
 <script src="data-calendar.js"></script>
@@ -299,6 +299,24 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
 .edit-field label{display:block;font-size:12px;color:var(--text3);margin-bottom:5px;font-weight:600}
 .btn-edit{padding:7px 14px;border-radius:6px;border:1.5px solid var(--teal-mid);background:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--teal-dark)}
 .btn-save-edit{width:100%;padding:13px;background:var(--teal-dark);color:#fff;border:none;border-radius:var(--r2);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:8px}
+/* ── Loading overlay (進度條/處理中) ── */
+.loading-ovl{position:fixed;inset:0;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;z-index:99999;-webkit-tap-highlight-color:transparent}
+.loading-ovl.show{display:flex}
+.loading-box{background:#fff;padding:24px 36px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.2);text-align:center;min-width:240px}
+.loading-spin{width:48px;height:48px;border:4px solid #e6f4f1;border-top:4px solid #1d6f6f;border-radius:50%;animation:lspin 0.9s linear infinite;margin:0 auto 12px}
+@keyframes lspin{to{transform:rotate(360deg)}}
+.loading-text{font-size:15px;color:#1d6f6f;font-weight:700}
+.loading-bar{width:100%;height:6px;background:#e6f4f1;border-radius:3px;margin-top:10px;overflow:hidden}
+.loading-bar-fill{height:100%;background:linear-gradient(90deg,#1d6f6f,#4fb3a0);width:30%;animation:lbar 1.2s ease-in-out infinite}
+@keyframes lbar{0%{margin-left:-30%}100%{margin-left:100%}}
+/* iOS/Android 相容性：避免 input 觸發自動縮放 */
+input,select,textarea{font-size:16px !important;-webkit-appearance:none;-webkit-tap-highlight-color:transparent}
+button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+/* iOS safe-area */
+@supports(padding:max(0px)){
+  body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  .header{padding-top:max(8px,env(safe-area-inset-top))}
+}
 </style>
 </head>
 <body>
@@ -330,14 +348,23 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
       </select>
     </div>
     <div class="fg">
-      <label>公司密碼</label>
+      <label>工號（8碼）</label>
       <div class="pw-wrap">
-        <input type="password" id="login-empid" placeholder="輸入公司密碼" autocomplete="current-password" maxlength="30" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:12px 44px 12px 14px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:15px;font-family:inherit;background:var(--cream);color:var(--text);outline:none;transition:.2s">
-        <button type="button" class="pw-eye" onclick="togglePwEye()" id="pw-eye-btn" title="顯示/隱藏密碼">👁</button>
+        <input type="password" id="login-empid" placeholder="輸入工號" autocomplete="off" maxlength="8" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:12px 44px 12px 14px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:15px;font-family:inherit;background:var(--cream);color:var(--text);outline:none;transition:.2s">
+        <button type="button" class="pw-eye" onclick="togglePwEye()" id="pw-eye-btn" title="顯示/隱藏工號">👁</button>
       </div>
     </div>
     <button class="btn-login" id="login-btn" onclick="doLogin()">登入</button>
-    <div class="login-err" id="login-err">密碼錯誤，請重試</div>
+    <div class="login-err" id="login-err">工號不正確，請重試</div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-ovl" id="loading-ovl">
+  <div class="loading-box">
+    <div class="loading-spin"></div>
+    <div class="loading-text" id="loading-text">處理中…</div>
+    <div class="loading-bar"><div class="loading-bar-fill"></div></div>
   </div>
 </div>
 
@@ -645,7 +672,7 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
         <div style="font-size:14px;color:var(--text2);margin-bottom:14px">請輸入維護密碼</div>
         <input type="password" id="maint-pw-input" class="f-inp" style="max-width:180px;text-align:center;letter-spacing:8px;font-size:22px;display:block;margin:0 auto 12px" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')checkMaintPw()">
         <button class="btn-submit" onclick="checkMaintPw()" style="padding:10px 28px;border-radius:8px">確認</button>
-        <div id="maint-pw-err" style="color:var(--red);font-size:13px;margin-top:10px;display:none">密碼錯誤，請重試</div>
+        <div id="maint-pw-err" style="color:var(--red);font-size:13px;margin-top:10px;display:none">工號不正確，請重試</div>
       </div>
     </div>
     <!-- 主維護區 -->
@@ -893,6 +920,80 @@ function togglePwEye(){
   btn.textContent=show?'🙈':'👁';
 }
 function escHtml(s){const d=document.createElement('div');d.appendChild(document.createTextNode(String(s||'')));return d.innerHTML;}
+// ─── Loading overlay 控制 ───
+function showLoading(text){
+  const ovl=document.getElementById('loading-ovl');
+  const t=document.getElementById('loading-text');
+  if(t)t.textContent=text||'處理中…';
+  if(ovl)ovl.classList.add('show');
+}
+function hideLoading(){
+  const ovl=document.getElementById('loading-ovl');
+  if(ovl)ovl.classList.remove('show');
+}
+
+// ─── 照片壓縮：壓到 800-1200KB 之間 ───
+// 採用迭代降低品質策略：若超過 1200KB 則降品質再壓；若低於 800KB 則維持
+async function compressImage(file, opts={}){
+  const targetMin = opts.minKB || 800;
+  const targetMax = opts.maxKB || 1200;
+  const maxDim    = opts.maxDim || 1920;
+
+  // 讀檔成 Image
+  const dataUrl = await new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onload=()=>res(fr.result); fr.onerror=rej;
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise((res,rej)=>{
+    const i=new Image();
+    i.onload=()=>res(i); i.onerror=rej;
+    i.src=dataUrl;
+  });
+
+  // 縮放尺寸：最長邊不超過 maxDim
+  let w=img.width, h=img.height;
+  if(w>h && w>maxDim){ h=Math.round(h*maxDim/w); w=maxDim; }
+  else if(h>w && h>maxDim){ w=Math.round(w*maxDim/h); h=maxDim; }
+
+  const canvas=document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+
+  // 迭代降低品質直到落入區間
+  let quality=0.92;
+  let blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',quality));
+  let sizeKB=blob.size/1024;
+  // 若太大：降品質
+  while(sizeKB>targetMax && quality>0.3){
+    quality -= 0.1;
+    blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',quality));
+    sizeKB=blob.size/1024;
+  }
+  // 若仍超出（極端大圖），再縮尺寸
+  while(sizeKB>targetMax && Math.max(canvas.width,canvas.height)>800){
+    canvas.width=Math.round(canvas.width*0.85);
+    canvas.height=Math.round(canvas.height*0.85);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',quality));
+    sizeKB=blob.size/1024;
+  }
+  // 若小於 800KB 且原圖夠大，提高品質再壓一次以接近 800-1200 區間
+  if(sizeKB<targetMin && quality<0.95){
+    let testQ=Math.min(0.95, quality+0.15);
+    const testBlob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',testQ));
+    if(testBlob.size/1024 <= targetMax){ blob=testBlob; sizeKB=testBlob.size/1024; }
+  }
+
+  // Blob → base64 dataURL
+  return await new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onload=()=>res({dataUrl:fr.result, sizeKB:Math.round(sizeKB)});
+    fr.onerror=rej;
+    fr.readAsDataURL(blob);
+  });
+}
 function _cnSort(a,b){const m={'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10};const k=s=>s.replace(/[一二三四五六七八九十]/g,c=>String(m[c]||c).padStart(2,'0'));return k(a).localeCompare(k(b),undefined,{numeric:true});}function initLoginForm(){
   const deptSel=document.getElementById('login-dept');
   if(!deptSel)return;
@@ -923,42 +1024,25 @@ function onLoginSectionChange(){
 }
 async function doLogin(){
   const personId=document.getElementById('login-person').value;
-  const password=document.getElementById('login-empid').value;
+  const empid=document.getElementById('login-empid').value.trim();
   const errEl=document.getElementById('login-err');
-  const loginBtn=document.getElementById('login-btn');
   // ① 選人員檢查
   if(!personId){errEl.textContent='請先選擇人員';errEl.style.display='block';return;}
   const person=PERSONNEL.find(p=>p.id===personId);
   if(!person){errEl.textContent='找不到人員資料';errEl.style.display='block';return;}
-  // ② 密碼檢查
-  if(!password||!password.trim()){errEl.textContent='請輸入公司密碼';errEl.style.display='block';return;}
   errEl.style.display='none';
-  // 防重複提交（依 CheckUserId API 要求）
-  if(loginBtn){loginBtn.disabled=true;loginBtn.textContent='驗證中…';}
+  // ② 直接以工號向 GAS 人員工號表格驗證（繞過 api() 避免 401 自動登出）
   try{
-    // ③ 呼叫 GAS /api/login，GAS 內部會打日翊 CheckUserId AD 驗證
     const url=new URL(GAS_URL);
     url.searchParams.set('path','/api/login');
-    // username = 工號（用所選人員的 id 當帳號），password = 使用者輸入的公司密碼
-    const payload={username:person.id,password:password,_method:'POST'};
+    const payload={username:empid,password:empid,_method:'POST'};
     url.searchParams.set('d',btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
     const r=await fetch(url.toString(),{method:'POST',body:JSON.stringify(payload),redirect:'follow'});
     const d=await r.json();
-    if(!d.token){
-      // 顯示 GAS 回傳的具體錯誤訊息（已含 CheckUserId 代碼對照）
-      errEl.textContent=d.error||'驗證失敗，請聯絡管理員';
-      errEl.style.display='block';
-      return;
-    }
+    if(!d.token){errEl.textContent='工號驗證失敗，請確認工號或聯絡管理員';errEl.style.display='block';return;}
     token=d.token;
-  }catch(e){
-    errEl.textContent='無法連線至伺服器，請確認網路';
-    errEl.style.display='block';
-    return;
-  }finally{
-    if(loginBtn){loginBtn.disabled=false;loginBtn.textContent='登入';}
-  }
-  // ④ 登入成功，帶入完整人員資訊
+  }catch(e){errEl.textContent='無法連線至伺服器，請確認網路';errEl.style.display='block';return;}
+  // ③ 登入成功，帶入完整人員資訊
   currentUser={id:person.id,name:person.name,dept:person.dept,section:person.section,username:person.name};
   localStorage.setItem('ci_token',token);
   localStorage.setItem('ci_user',JSON.stringify(currentUser));
@@ -1570,7 +1654,7 @@ function renderFlatQ(q,num,catName,isSkipped){
       </button>`;
     }).join('')}</div>
     ${needsPhoto?`<div id="unclear-block-${q.id}" style="margin-top:8px;padding:10px;background:var(--red-bg);border-radius:var(--r2);border:1.5px solid var(--red-border)">
-      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">⚠ 選擇「無法判斷」請填寫原因並上傳照片<span class="req">（必填）</span></div>
+      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:4px">⚠ 選擇「無法判斷」請填寫原因並上傳照片<span class="req">（必填）</span></div><div style="font-size:11px;color:var(--text3);margin-bottom:6px">💡 若現場無法拍照，請於原因中註明「無法拍照」即可跳過照片上傳</div>
       <textarea class="q-note" id="qnote-${q.id}" placeholder="請填寫無法判斷原因..." onchange="setNote(${q.id},this.value)" style="border-color:${ans.note?'var(--border)':'var(--red)'}">${ans.note||''}</textarea>
       ${renderPhotoArea(q.id)}
       ${!(photosByQ[q.id]||[]).length?`<div style="font-size:12px;color:var(--red);margin-top:4px">📷 尚未上傳照片</div>`:''}
@@ -1650,19 +1734,38 @@ function openPhoto(qid,mode){
   if(mode==='camera')inp.setAttribute('capture','environment');
   inp.click();
 }
-function handlePhotoUpload(e){
+async function handlePhotoUpload(e){
   const files=e.target.files;
   if(!files.length||photoTargetQid===null)return;
-  Array.from(files).forEach(file=>{
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      if(!photosByQ[photoTargetQid])photosByQ[photoTargetQid]=[];
-      photosByQ[photoTargetQid].push(ev.target.result);
-      renderAllQuestions();
-    };
-    reader.readAsDataURL(file);
-  });
-  e.target.value='';
+  const total=files.length;
+  showLoading(`壓縮照片中… 0/${total}`);
+  try{
+    let i=0;
+    for(const file of Array.from(files)){
+      i++;
+      document.getElementById('loading-text').textContent=`壓縮照片中… ${i}/${total}`;
+      try{
+        const {dataUrl,sizeKB}=await compressImage(file,{minKB:800,maxKB:1200,maxDim:1920});
+        if(!photosByQ[photoTargetQid])photosByQ[photoTargetQid]=[];
+        photosByQ[photoTargetQid].push(dataUrl);
+        console.log(`[photo] 第${i}張壓縮完成 ~ ${sizeKB}KB`);
+      }catch(err){
+        console.error('壓縮失敗，使用原圖：',err);
+        // 失敗則退回原圖
+        const dataUrl=await new Promise(res=>{
+          const fr=new FileReader();
+          fr.onload=()=>res(fr.result);
+          fr.readAsDataURL(file);
+        });
+        if(!photosByQ[photoTargetQid])photosByQ[photoTargetQid]=[];
+        photosByQ[photoTargetQid].push(dataUrl);
+      }
+    }
+    renderAllQuestions();
+  }finally{
+    hideLoading();
+    e.target.value='';
+  }
 }
 function removePhoto(qid,idx){
   if(photosByQ[qid])photosByQ[qid].splice(idx,1);
@@ -1696,10 +1799,15 @@ async function submitInspection(){
     alert('⚠ 請上傳紙本表格照片後才能送出');return;
   }
 
-  // ── 防重複：同店同日期只能一筆 ──
-  const dupCheck=await api('/api/inspections/check','POST',{store_code:selectedStore.code,audit_date:document.getElementById('inspect-dt').value.split('T')[0]});
-  if(dupCheck.exists){
-    if(!confirm(`⚠ 此店鋪（${selectedStore.code} ${selectedStore.name}）今日已有點檢記錄！\n\n確定要繼續送出新記錄嗎？（建議先查詢確認）`))return;
+  // ── 防重複：同店同日期只能一筆（嚴格阻擋）──
+  showLoading('檢查重複記錄中…');
+  let dupCheck;
+  try{
+    dupCheck=await api('/api/inspections/check','POST',{store_code:selectedStore.code,audit_date:document.getElementById('inspect-dt').value.split('T')[0]});
+  }finally{ hideLoading(); }
+  if(dupCheck && dupCheck.exists){
+    alert(`❌ 無法送出：此店鋪（${selectedStore.code} ${selectedStore.name}）今日已有點檢記錄！\n\n每家店每日僅能上傳一次。請至「查詢記錄」修改既有記錄。`);
+    return;
   }
 
   const allQs=getRealQs(); // 排除[說明]虛擬題
@@ -1728,10 +1836,10 @@ async function submitInspection(){
         if(block)block.scrollIntoView({behavior:'smooth',block:'center'});
         alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n選擇「無法判斷」，請填寫原因`);return;
       }
-      if(!photos.length){
+      if(!skipPhoto && !photos.length){
         const block=document.getElementById(`unclear-block-${q.id}`);
         if(block)block.scrollIntoView({behavior:'smooth',block:'center'});
-        alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n選擇「無法判斷」，請上傳照片`);return;
+        alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n選擇「無法判斷」，請上傳照片（若現場無法拍照，請於原因說明中註明「無法拍照」即可跳過）`);return;
       }
     }
   }
@@ -1790,6 +1898,7 @@ async function submitInspection(){
   };
   const apiStore=apiStores.find(s=>s.code===selectedStore.code);
   if(apiStore)payload.store_id=apiStore.id;
+  showLoading('送出記錄中…');
   try{
     // paperPhotoData 已是 Google Drive URL（由 handlePaperPhotoUpload 上傳取得）
     payload.paper_photo=paperPhotoData||'';
@@ -1797,11 +1906,13 @@ async function submitInspection(){
     completedStores.add(selectedStore.code);
     // 送出後鎖定本月店型（若尚未鎖定）
     if(!lockedStoreType) applyStoreTypeLock(currentStoreType);
+    hideLoading();
     // Show completion
-    const msg='查核完成';
+    const msg='✅ 查核完成';
     alert(msg);
     clearInspectForm();
   }catch(e){
+    hideLoading();
     console.error('Submit error:',e);
     alert('送出失敗：'+e.message+'\n\n請確認網路連線後重試');
   }
