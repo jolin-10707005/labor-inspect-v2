@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -330,14 +330,14 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
       </select>
     </div>
     <div class="fg">
-      <label>工號（8碼）</label>
+      <label>公司密碼</label>
       <div class="pw-wrap">
-        <input type="password" id="login-empid" placeholder="輸入工號" autocomplete="off" maxlength="8" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:12px 44px 12px 14px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:15px;font-family:inherit;background:var(--cream);color:var(--text);outline:none;transition:.2s">
-        <button type="button" class="pw-eye" onclick="togglePwEye()" id="pw-eye-btn" title="顯示/隱藏工號">👁</button>
+        <input type="password" id="login-empid" placeholder="輸入公司密碼" autocomplete="current-password" maxlength="30" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:12px 44px 12px 14px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:15px;font-family:inherit;background:var(--cream);color:var(--text);outline:none;transition:.2s">
+        <button type="button" class="pw-eye" onclick="togglePwEye()" id="pw-eye-btn" title="顯示/隱藏密碼">👁</button>
       </div>
     </div>
-    <button class="btn-login" onclick="doLogin()">登入</button>
-    <div class="login-err" id="login-err">工號不正確，請重試</div>
+    <button class="btn-login" id="login-btn" onclick="doLogin()">登入</button>
+    <div class="login-err" id="login-err">密碼錯誤，請重試</div>
   </div>
 </div>
 
@@ -347,6 +347,7 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
     <div class="h-logo"><span class="icon">🔍</span><h1>勞檢查核平台</h1></div>
     <div class="h-actions">
       <button class="btn-hdr btn-maint" onclick="openMaint()">⚙ 維護 <span class="badge">管理</span></button>
+      <button class="btn-hdr" onclick="forceRefreshCache()" title="清除快取重新載入題目與店舖" style="background:#fff;color:var(--teal-dark);border:1.5px solid var(--teal)">🔄 刷新</button>
       <button class="btn-hdr btn-out" onclick="doLogout()">▲ 登出</button>
     </div>
   </header>
@@ -812,6 +813,46 @@ let _lcGen=0; // loadCalendarStores generation counter — prevents stale calls 
 let recordsData=[],summaryData=[];
 let _clCache={RC:null,FC:null},_detailCache={};
 
+// ─── 本地快取（題目/店舖／月更動）───
+const CACHE_TTL_MS = 24*60*60*1000; // 24 小時
+function _cacheKey(path){ return 'ci_cache::'+path; }
+function _cacheGet(path){
+  try{
+    const raw = localStorage.getItem(_cacheKey(path));
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(!obj || !obj.exp || obj.exp < Date.now()) return null;
+    return obj.data;
+  }catch(e){ return null; }
+}
+function _cacheSet(path, data){
+  try{
+    localStorage.setItem(_cacheKey(path), JSON.stringify({ data, exp: Date.now()+CACHE_TTL_MS }));
+  }catch(e){}
+}
+function _cacheClearAll(){
+  Object.keys(localStorage).filter(k=>k.startsWith('ci_cache::')).forEach(k=>localStorage.removeItem(k));
+}
+function _cacheClearChecklist(){
+  Object.keys(localStorage).filter(k=>k.startsWith('ci_cache::/api/checklist')).forEach(k=>localStorage.removeItem(k));
+}
+function _cacheClearStores(){
+  Object.keys(localStorage).filter(k=>k.startsWith('ci_cache::/api/stores')).forEach(k=>localStorage.removeItem(k));
+}
+async function cachedApi(path){
+  const cached = _cacheGet(path);
+  if(cached){ console.log('[cache HIT]', path); return cached; }
+  console.log('[cache MISS]', path);
+  const data = await api(path);
+  _cacheSet(path, data);
+  return data;
+}
+async function forceRefreshCache(){
+  _cacheClearAll();
+  alert('✅ 已重新整理，下次載入會撈取最新題目與店舖');
+  location.reload();
+}
+
 // ─── API（GAS Web App 版）───
 // GAS 302 轉址會將 POST body 遺失，故同時將 body 編碼為 URL 參數 d
 async function api(path,method='GET',body=null){
@@ -882,25 +923,42 @@ function onLoginSectionChange(){
 }
 async function doLogin(){
   const personId=document.getElementById('login-person').value;
-  const empid=document.getElementById('login-empid').value.trim();
+  const password=document.getElementById('login-empid').value;
   const errEl=document.getElementById('login-err');
+  const loginBtn=document.getElementById('login-btn');
   // ① 選人員檢查
   if(!personId){errEl.textContent='請先選擇人員';errEl.style.display='block';return;}
   const person=PERSONNEL.find(p=>p.id===personId);
   if(!person){errEl.textContent='找不到人員資料';errEl.style.display='block';return;}
+  // ② 密碼檢查
+  if(!password||!password.trim()){errEl.textContent='請輸入公司密碼';errEl.style.display='block';return;}
   errEl.style.display='none';
-  // ② 直接以工號向 GAS users 表格驗證（繞過 api() 避免 401 自動登出）
+  // 防重複提交（依 CheckUserId API 要求）
+  if(loginBtn){loginBtn.disabled=true;loginBtn.textContent='驗證中…';}
   try{
+    // ③ 呼叫 GAS /api/login，GAS 內部會打日翊 CheckUserId AD 驗證
     const url=new URL(GAS_URL);
     url.searchParams.set('path','/api/login');
-    const payload={username:empid,password:empid,_method:'POST'};
+    // username = 工號（用所選人員的 id 當帳號），password = 使用者輸入的公司密碼
+    const payload={username:person.id,password:password,_method:'POST'};
     url.searchParams.set('d',btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
     const r=await fetch(url.toString(),{method:'POST',body:JSON.stringify(payload),redirect:'follow'});
     const d=await r.json();
-    if(!d.token){errEl.textContent='工號驗證失敗，請確認工號或聯絡管理員';errEl.style.display='block';return;}
+    if(!d.token){
+      // 顯示 GAS 回傳的具體錯誤訊息（已含 CheckUserId 代碼對照）
+      errEl.textContent=d.error||'驗證失敗，請聯絡管理員';
+      errEl.style.display='block';
+      return;
+    }
     token=d.token;
-  }catch(e){errEl.textContent='無法連線至伺服器，請確認網路';errEl.style.display='block';return;}
-  // ③ 登入成功，帶入完整人員資訊
+  }catch(e){
+    errEl.textContent='無法連線至伺服器，請確認網路';
+    errEl.style.display='block';
+    return;
+  }finally{
+    if(loginBtn){loginBtn.disabled=false;loginBtn.textContent='登入';}
+  }
+  // ④ 登入成功，帶入完整人員資訊
   currentUser={id:person.id,name:person.name,dept:person.dept,section:person.section,username:person.name};
   localStorage.setItem('ci_token',token);
   localStorage.setItem('ci_user',JSON.stringify(currentUser));
@@ -928,8 +986,8 @@ async function initApp(){
   ['r-start','r-end','s-start','s-end'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   document.getElementById('month-tag').textContent=(now.getMonth()+1)+'月份';
   [categories,apiStores]=await Promise.all([
-    api('/api/checklist?store_type=RC'),
-    api('/api/stores'),
+    cachedApi('/api/checklist?store_type=RC'),
+    cachedApi('/api/stores'),
   ]);
   buildDeptOptions();buildSectionFilters();initAnswers();
   // Auto-fill basic info from logged-in user
@@ -978,7 +1036,7 @@ async function selectStoreType(type){
   const _url=_auditMonth
     ?`/api/checklist?store_type=${type}&month=${_auditMonth}`
     :`/api/checklist?store_type=${type}`;
-  categories=await api(_url);
+  categories=await cachedApi(_url);
   initAnswers();
 }
 
@@ -997,8 +1055,8 @@ async function onInspectDtChange(){
   // 尚未選人員：FC 與 RC 都帶月份查，有哪個就用哪個
   try{
     const [fcRes,rcRes]=await Promise.allSettled([
-      api(`/api/checklist?store_type=FC&month=${newMonth}`),
-      api(`/api/checklist?store_type=RC&month=${newMonth}`)
+      cachedApi(`/api/checklist?store_type=FC&month=${newMonth}`),
+      cachedApi(`/api/checklist?store_type=RC&month=${newMonth}`)
     ]);
     const fcCats=fcRes.status==='fulfilled'?fcRes.value:[];
     const rcCats=rcRes.status==='fulfilled'?rcRes.value:[];
@@ -1182,7 +1240,7 @@ async function loadCalendarStores(){
     console.log('[loadCalendarStores] gen='+myGen+' existing inspections found, lockType='+lockType+', month='+month);
     // 先取得對應題目再鎖定（避免 applyStoreTypeLock 內 selectStoreType 用錯月份）
     try{
-      const lockCats=await api(`/api/checklist?store_type=${lockType}&month=${month}`);
+      const lockCats=await cachedApi(`/api/checklist?store_type=${lockType}&month=${month}`);
       if(myGen!==_lcGen){console.log('[loadCalendarStores] gen='+myGen+' superseded after lockCats fetch, abort');return;}
       console.log('[loadCalendarStores] gen='+myGen+' lockCats:', lockCats?.length, '筆');
       if(lockCats.length>0){
@@ -3269,6 +3327,7 @@ async function addSingleQuestion(){
   if(!catId||!content){alert('請選擇分類並輸入題目內容');return;}
   try{
     await api('/api/questions','POST',{category_id:catId,content});
+    _cacheClearChecklist();
     categories=await api(`/api/checklist?store_type=${currentStoreType}`);
     renderQuestionList();
     document.getElementById('m-q-content').value='';
