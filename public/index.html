@@ -1047,7 +1047,7 @@ function doLogout(){
 }
 
 // ─── INIT ───
-async async function initApp(){
+async function initApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   const now=new Date(),pad=n=>String(n).padStart(2,'0');
@@ -1079,7 +1079,7 @@ async async function initApp(){
 }
 
 // ─── STORE TYPE ───
-async async function selectStoreType(type){
+async function selectStoreType(type){
   // 店型可自由切換，依當月轉入題目決定預設
   currentStoreType=type;
   document.querySelectorAll('.store-type-btn').forEach(b=>{
@@ -1140,7 +1140,7 @@ async function onInspectDtChange(){
   }
 }
 
-async async function applyStoreTypeLock(type){
+async function applyStoreTypeLock(type){
   // 不再硬鎖店型，純粹預先選定當月轉入題目的店型；店型切換由 selectStoreType 自由控制
   lockedStoreType=null;
   if(currentStoreType!==type) await selectStoreType(type);
@@ -1926,7 +1926,7 @@ function buildSectionFilters(){
     secs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
   });
 }
-async async function queryRecords(){
+async function queryRecords(){
   const start=document.getElementById('r-start').value,end=document.getElementById('r-end').value;
   if(!start||!end){alert('請選擇日期範圍');return;}
   let url=`/api/inspections?start_date=${start}&end_date=${end}`;
@@ -2272,7 +2272,7 @@ function exportCSV(){
 }
 
 // ─── SUMMARY ───
-async async function querySummary(){
+async function querySummary(){
   showLoading('彙整中…');
   try{
   const start=document.getElementById('s-start').value,end=document.getElementById('s-end').value;
