@@ -1152,59 +1152,9 @@ async function onInspectDtChange(){
     if(selectedInspector) await loadCalendarStores();
   }finally{ hideLoading(); }
   return;
-  /* 以下舊邏輯保留但不執行
-  if(selectedInspector){
-    await loadCalendarStores();
-    return;
-  }
-  // 尚未選人員：FC 與 RC 都帶月份查，有哪個就用哪個
-  try{
-    const [fcRes,rcRes]=await Promise.allSettled([
-      cachedApi(`/api/checklist?store_type=FC&month=${newMonth}`),
-      cachedApi(`/api/checklist?store_type=RC&month=${newMonth}`)
-    ]);
-    const fcCats=fcRes.status==='fulfilled'?fcRes.value:[];
-    const rcCats=rcRes.status==='fulfilled'?rcRes.value:[];
-    const fcHas=fcCats.length>0;
-    const rcHas=rcCats.length>0;
-    // FC 有題目 → FC；RC 有題目 → RC；都沒有 → 不改變現有狀態
-    if(!fcHas&&!rcHas){console.warn('[onInspectDtChange] 本月無題目 month='+newMonth);return;}
-    let inferType=fcHas?'FC':'RC';
-    if(lockedStoreType&&lockedStoreType!==inferType) clearStoreTypeLock();
-    // 直接使用已取回的 categories，不再呼叫 selectStoreType
-    categories=inferType==='FC'?fcCats:rcCats;
-    currentStoreType=inferType;
-    initAnswers();
-    // 更新按鈕 UI
-    document.querySelectorAll('.store-type-btn').forEach(b=>{b.style.border='2px solid var(--border)';b.style.background='#fff';b.style.opacity='1';b.style.cursor='pointer';});
-    const _b=document.getElementById(`btn-type-${inferType.toLowerCase()}`);
-    if(_b){_b.style.border='3px solid var(--teal-dark)';_b.style.background='var(--teal-pale)';}
-  }catch(e){
-    console.warn('[onInspectDtChange] 題目查詢失敗',e);
-    if(currentStoreType) await selectStoreType(currentStoreType);
-  }
 }
 
-async function applyStoreTypeLock(type){
-  // 不再硬鎖店型，純粹預先選定當月轉入題目的店型；店型切換由 selectStoreType 自由控制
-  lockedStoreType=null;
-  if(currentStoreType!==type) await selectStoreType(type);
-  else {
-    const btn=document.getElementById(`btn-type-${type.toLowerCase()}`);
-    if(btn){btn.style.border='3px solid var(--teal-dark)';btn.style.background='var(--teal-pale)';}
-  }
-  // (不再灰掉另一個店型按鈕、不顯示鎖定橫幅)
-}
-
-function clearStoreTypeLock(){
-  lockedStoreType=null;
-  document.querySelectorAll('.store-type-btn').forEach(b=>{
-    b.style.opacity='1';b.style.cursor='pointer';
-  });
-  const notice=document.getElementById('store-type-lock-notice');
-  if(notice)notice.style.display='none';
-}
-
+// ─── 店型鎖定（不再強制鎖定，僅做選定提示）───
 // 首次點檢店型確認（Modal 裡的按鈕呼叫）
 function confirmFirstStoreType(type){
   // 關閉 Modal
