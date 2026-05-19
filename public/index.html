@@ -827,6 +827,8 @@ let recordsData=[],summaryData=[];
 let _clCache={RC:null,FC:null},_detailCache={};
 
 // ─── 本地快取（題目/店舖／月更動）───
+const CACHE_VERSION = '2026-05-19-v3'; // 版本變更會自動清快取
+(function(){ const lv = localStorage.getItem('ci_cache_version'); if(lv !== CACHE_VERSION){ Object.keys(localStorage).filter(k=>k.startsWith('ci_cache::')).forEach(k=>localStorage.removeItem(k)); localStorage.setItem('ci_cache_version', CACHE_VERSION); console.log('[cache] cleared due to version change'); } })();
 const CACHE_TTL_MS = 24*60*60*1000; // 24 小時
 function _cacheKey(path){ return 'ci_cache::'+path; }
 function _cacheGet(path){
@@ -1050,6 +1052,8 @@ function doLogout(){
 async function initApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
+  showLoading('載入中… 同步題目與店舖資料');
+  try{
   const now=new Date(),pad=n=>String(n).padStart(2,'0');
   document.getElementById('inspect-dt').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const today=now.toISOString().split('T')[0];
@@ -1074,8 +1078,43 @@ async function initApp(){
     if(secSel){const o=document.createElement('option');o.value=currentUser.section||'';o.textContent=currentUser.section||'';secSel.innerHTML='';secSel.appendChild(o);secSel.value=currentUser.section||'';}
     selectedInspector=currentUser.name||'';
     inspectorId=currentUser.id||'';
+    // 依當前日期自動判斷店型並載入對應題目
+    await autoDetectStoreType();
     loadCalendarStores();
   }
+  }finally{ hideLoading(); }
+}
+
+// 依點檢日期自動偵測店型：當月有 FC 題目用 FC，有 RC 題目用 RC
+async function autoDetectStoreType(){
+  const dtVal=document.getElementById('inspect-dt')?.value||'';
+  const month=dtVal?parseInt(dtVal.slice(5,7)):(new Date().getMonth()+1);
+  try{
+    const [fcRes,rcRes]=await Promise.allSettled([
+      cachedApi(`/api/checklist?store_type=FC&month=${month}`),
+      cachedApi(`/api/checklist?store_type=RC&month=${month}`)
+    ]);
+    const fcCats=fcRes.status==='fulfilled'?fcRes.value:[];
+    const rcCats=rcRes.status==='fulfilled'?rcRes.value:[];
+    const fcCount=fcCats.reduce((s,c)=>s+(c.questions?.length||0),0);
+    const rcCount=rcCats.reduce((s,c)=>s+(c.questions?.length||0),0);
+    let pick='RC';
+    if(fcCount>0 && rcCount===0) pick='FC';
+    else if(rcCount>0 && fcCount===0) pick='RC';
+    else if(fcCount>0 && rcCount>0) pick=currentStoreType||'RC';
+    else return; // 兩個都沒題目
+    currentStoreType=pick;
+    categories=pick==='FC'?fcCats:rcCats;
+    // 更新店型按鈕 UI
+    document.querySelectorAll('.store-type-btn').forEach(b=>{
+      b.style.border='2px solid var(--border)';
+      b.style.background='#fff';
+    });
+    const btn=document.getElementById(`btn-type-${pick.toLowerCase()}`);
+    if(btn){btn.style.border='3px solid var(--teal-dark)';btn.style.background='var(--teal-pale)';}
+    initAnswers();
+    console.log('[autoDetectStoreType]',{month,fcCount,rcCount,pick});
+  }catch(e){console.error('autoDetectStoreType:',e);}
 }
 
 // ─── STORE TYPE ───
@@ -1105,10 +1144,16 @@ async function onInspectDtChange(){
   const dtVal=document.getElementById('inspect-dt')?.value||'';
   const newMonth=dtVal?parseInt(dtVal.slice(5,7)):null;
   if(!newMonth) return;
-  // 更新月份標籤顯示
   document.getElementById('month-tag').textContent=newMonth+'月份';
+  // 依日期自動偵測店型並載入題目
+  showLoading('載入題目中…');
+  try{
+    await autoDetectStoreType();
+    if(selectedInspector) await loadCalendarStores();
+  }finally{ hideLoading(); }
+  return;
+  /* 以下舊邏輯保留但不執行
   if(selectedInspector){
-    // 已選好人員：loadCalendarStores 會同時更新名單 + 推斷店型 + 載入題目，不需要再呼叫 selectStoreType
     await loadCalendarStores();
     return;
   }
@@ -1587,7 +1632,7 @@ function renderFlatQ(q,num,catName,isSkipped){
   const ans=answers[q.id]||{};
   // 無法判斷說明欄只在工時薪資(param=329)顯示
   const selOpt=q.options.find(o=>o.id===ans.opt_id);
-  const needsPhoto=!!(selOpt&&selOpt.label.includes('無法判斷')&&!selOpt.label.includes('無需點檢')&&!selOpt.label.includes('不需點檢'));
+  const needsPhoto=!!(selOpt&&selOpt.label.includes('現場無法判斷'));
   const hasAns=!!ans.opt_id;
 
   if(isSkipped){
@@ -1784,7 +1829,7 @@ async function submitInspection(){
       const q=allQs[qi];
       if(answers[q.id]?.skipped)continue;
       const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
-      if(!selOpt||!(selOpt.label.includes('無法判斷')&&!selOpt.label.includes('無需點檢')&&!selOpt.label.includes('不需點檢')))continue;
+      if(!selOpt||!selOpt.label.includes('現場無法判斷'))continue;
       const note=(answers[q.id]?.note||'').trim();
       const photos=photosByQ[q.id]||[];
       if(!note){
@@ -1810,7 +1855,7 @@ async function submitInspection(){
       const sName=(selectedStore.name||'').replace(/[\\/:*?"<>|]/g,'_');
       for(const q of allQs){
         const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
-        if(!selOpt||!(selOpt.label.includes('無法判斷')&&!selOpt.label.includes('無需點檢')&&!selOpt.label.includes('不需點檢')))continue;
+        if(!selOpt||!selOpt.label.includes('現場無法判斷'))continue;
         const photos=photosByQ[q.id]||[];
         if(!photos.length)continue;
         // 檔名：店名-問題簡稱-無法判斷（多張加序號）
@@ -2010,7 +2055,7 @@ async function toggleRecordDetail(id,storeType,auditDate){
           const opts=qOptsMap[a.question_id]||[];
           const optHtml=opts.map(o=>`<option value="${o.id}" data-skip='${JSON.stringify(o.skip_items||[])}' ${String(o.id)===String(a.opt_id)?'selected':''}>${o.label}</option>`).join('');
           // 判斷是否需要照片（option label 含 無法判斷 或 拍照）
-          const needsEditPhoto=(a.option_label||'').includes('無法判斷')||(a.option_label||'').includes('拍照');
+          const needsEditPhoto=(a.option_label||'').includes('現場無法判斷');
           const existPhotoUrl=a.note&&a.note.startsWith('https://')?a.note:'';
           html+=`<div class="rec-edit-q" id="req-${id}-${a.question_id}" data-qid="${a.question_id}" ${a.skipped?'style="opacity:.45"':''}>
             <div class="rec-edit-qlabel">${a.question_content}</div>
@@ -2054,7 +2099,7 @@ function onRecEditChange(insId,sel){
   // ── 動態顯示/隱藏「無法判斷」照片區 ──
   const selectedOpt=sel.options[sel.selectedIndex];
   const optLabel=selectedOpt?selectedOpt.textContent:'';
-  const needsPhoto=!!(optLabel.includes('無法判斷')&&!optLabel.includes('無需點檢')&&!optLabel.includes('不需點檢'));
+  const needsPhoto=optLabel.includes('現場無法判斷');
   const qid=parseInt(sel.dataset.qid);
   const row=sel.closest('.rec-edit-q');
   if(row){
