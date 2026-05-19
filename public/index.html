@@ -407,8 +407,7 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
           <div style="font-size:12px;color:var(--text3);margin-top:3px">勞工名冊、勞保、工資、出勤、加班</div>
         </button>
       </div>
-      <!-- 本月店型鎖定提示（有既有點檢時才顯示） -->
-      <div id="store-type-lock-notice" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:var(--r2);font-size:13px;font-weight:600;display:none;align-items:center;gap:8px"></div>
+      <!-- 已移除店型鎖定提示，店型可自由切換 -->
       <!-- 當月無題目提示 -->
       <div id="no-questions-msg" style="display:none;margin-bottom:12px;padding:12px 14px;border-radius:var(--r2);background:var(--red-bg);border:1.5px solid var(--red-border);font-size:13px;font-weight:600;color:var(--red)">
         ⚠ 當月點檢題目尚未設定，無法執行點檢。<br>
@@ -436,26 +435,13 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
         <input type="datetime-local" class="f-inp" id="inspect-dt" onchange="onInspectDtChange()">
       </div>
 
-      <div class="sec-lbl">點檢人員<span class="req">*</span></div>
-      <div id="inspector-area">
-        <div class="hint">依課別選擇人員：</div>
-        <div class="confirm-row" style="margin-top:6px">
-          <select class="f-sel" id="sel-inspector" disabled>
-            <option value="">-- 先選課別 --</option>
-          </select>
-          <button class="btn-confirm" onclick="confirmInspector()">確認</button>
-        </div>
-        <div class="or-divider">或自行輸入姓名</div>
-        <div class="confirm-row">
-          <input type="text" class="f-inp" id="custom-inspector" placeholder="輸入姓名">
-          <button class="btn-confirm" onclick="confirmCustomInspector()">確認</button>
-        </div>
-      </div>
-
-      <div id="inspector-confirmed-area" class="hidden">
-        <div class="inspector-confirmed">
-          <span class="name">👤 <span id="confirmed-name"></span></span>
-          <button class="btn-change" onclick="changeInspector()">更換</button>
+      <div class="sec-lbl">點檢人員</div>
+      <!-- 點檢人員自動帶入登入者，無法修改；所有點檢/編輯/刪除動作均記錄在此人員下 -->
+      <div id="inspector-area" style="display:none"><select id="sel-inspector"><option value=""></option></select><input type="text" id="custom-inspector"></div>
+      <div id="inspector-confirmed-area">
+        <div class="inspector-confirmed" style="background:#e6f4f1;border:1.5px solid var(--teal);border-radius:var(--r2);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+          <span class="name" style="font-weight:600">👤 <span id="confirmed-name">—</span></span>
+          <span style="font-size:11px;color:var(--text3);background:#fff;padding:2px 8px;border-radius:10px">已登入</span>
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1074,37 +1060,27 @@ async function initApp(){
     cachedApi('/api/stores'),
   ]);
   buildDeptOptions();buildSectionFilters();initAnswers();
-  // Auto-fill basic info from logged-in user
-  if(currentUser&&currentUser.dept&&currentUser.section&&currentUser.name){
+  // 自動帶入登入人員資料（部別/課別/姓名/工號），無法手動修改
+  if(currentUser){
+    const dDisp=document.getElementById('sel-dept-display');
+    const sDisp=document.getElementById('sel-section-display');
+    const nDisp=document.getElementById('confirmed-name');
+    if(dDisp) dDisp.textContent=currentUser.dept||'—';
+    if(sDisp) sDisp.textContent=currentUser.section||'—';
+    if(nDisp) nDisp.textContent=(currentUser.name||'')+(currentUser.id?'（'+currentUser.id+'）':'');
     const deptSel=document.getElementById('sel-dept');
-    if(deptSel){
-      deptSel.value=currentUser.dept;
-      onDeptChange();
-      const secSel=document.getElementById('sel-section');
-      if(secSel){
-        secSel.value=currentUser.section;
-        onSectionChange();
-        const insSel=document.getElementById('sel-inspector');
-        if(insSel){
-          const matchOpt=[...insSel.options].find(o=>o.value===currentUser.id);
-          if(matchOpt){
-            insSel.value=currentUser.id;
-            confirmInspector();
-          }
-        }
-      }
-    }
+    if(deptSel){const o=document.createElement('option');o.value=currentUser.dept||'';o.textContent=currentUser.dept||'';deptSel.innerHTML='';deptSel.appendChild(o);deptSel.value=currentUser.dept||'';}
+    const secSel=document.getElementById('sel-section');
+    if(secSel){const o=document.createElement('option');o.value=currentUser.section||'';o.textContent=currentUser.section||'';secSel.innerHTML='';secSel.appendChild(o);secSel.value=currentUser.section||'';}
+    selectedInspector=currentUser.name||'';
+    inspectorId=currentUser.id||'';
+    loadCalendarStores();
   }
 }
 
 // ─── STORE TYPE ───
 async function selectStoreType(type){
-  // 本月已有既有點檢，禁止切換到另一種店型
-  if(lockedStoreType && type!==lockedStoreType){
-    const lockedLabel=lockedStoreType==='RC'?'直營店（RC）':'加盟店（FC）';
-    alert(`⚠ 本月已有「${lockedLabel}」點檢記錄，無法切換店型。\n如確實有誤，請聯絡管理員處理。`);
-    return;
-  }
+  // 店型可自由切換，依當月轉入題目決定預設
   currentStoreType=type;
   document.querySelectorAll('.store-type-btn').forEach(b=>{
     b.style.border='2px solid var(--border)';
@@ -1165,32 +1141,14 @@ async function onInspectDtChange(){
 }
 
 async function applyStoreTypeLock(type){
-  lockedStoreType=type;
-  // 自動選到正確店型（await 確保 categories 載入完畢後 loadCalendarStores 才繼續）
+  // 不再硬鎖店型，純粹預先選定當月轉入題目的店型；店型切換由 selectStoreType 自由控制
+  lockedStoreType=null;
   if(currentStoreType!==type) await selectStoreType(type);
   else {
-    // 確保 UI 已標示選中狀態
     const btn=document.getElementById(`btn-type-${type.toLowerCase()}`);
     if(btn){btn.style.border='3px solid var(--teal-dark)';btn.style.background='var(--teal-pale)';}
   }
-  // 灰掉另一個按鈕
-  const otherType=type==='RC'?'FC':'RC';
-  const otherBtn=document.getElementById(`btn-type-${otherType.toLowerCase()}`);
-  if(otherBtn){
-    otherBtn.style.opacity='0.35';
-    otherBtn.style.cursor='not-allowed';
-    otherBtn.style.border='2px solid var(--border)';
-  }
-  // 顯示鎖定橫幅
-  const notice=document.getElementById('store-type-lock-notice');
-  if(notice){
-    const label=type==='RC'?'直營店（RC）':'加盟店（FC）';
-    notice.style.display='flex';
-    notice.style.background=type==='RC'?'#e0f2f1':'#fff3e0';
-    notice.style.border=`1.5px solid ${type==='RC'?'var(--teal)':'#ff9800'}`;
-    notice.style.color=type==='RC'?'var(--teal-dark)':'#e65100';
-    notice.innerHTML=`🔒 本月已有「${label}」點檢記錄，店型已自動鎖定，無法切換`;
-  }
+  // (不再灰掉另一個店型按鈕、不顯示鎖定橫幅)
 }
 
 function clearStoreTypeLock(){
@@ -1629,7 +1587,7 @@ function renderFlatQ(q,num,catName,isSkipped){
   const ans=answers[q.id]||{};
   // 無法判斷說明欄只在工時薪資(param=329)顯示
   const selOpt=q.options.find(o=>o.id===ans.opt_id);
-  const needsPhoto=selOpt&&selOpt.label.includes('現場無法判斷');
+  const needsPhoto=!!(selOpt&&selOpt.label.includes('無法判斷')&&!selOpt.label.includes('無需點檢')&&!selOpt.label.includes('不需點檢'));
   const hasAns=!!ans.opt_id;
 
   if(isSkipped){
@@ -1826,7 +1784,7 @@ async function submitInspection(){
       const q=allQs[qi];
       if(answers[q.id]?.skipped)continue;
       const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
-      if(!selOpt||!selOpt.label.includes('現場無法判斷'))continue;
+      if(!selOpt||!(selOpt.label.includes('無法判斷')&&!selOpt.label.includes('無需點檢')&&!selOpt.label.includes('不需點檢')))continue;
       const note=(answers[q.id]?.note||'').trim();
       const photos=photosByQ[q.id]||[];
       if(!note){
@@ -1852,7 +1810,7 @@ async function submitInspection(){
       const sName=(selectedStore.name||'').replace(/[\\/:*?"<>|]/g,'_');
       for(const q of allQs){
         const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
-        if(!selOpt||!selOpt.label.includes('現場無法判斷'))continue;
+        if(!selOpt||!(selOpt.label.includes('無法判斷')&&!selOpt.label.includes('無需點檢')&&!selOpt.label.includes('不需點檢')))continue;
         const photos=photosByQ[q.id]||[];
         if(!photos.length)continue;
         // 檔名：店名-問題簡稱-無法判斷（多張加序號）
@@ -1914,7 +1872,11 @@ async function submitInspection(){
   }catch(e){
     hideLoading();
     console.error('Submit error:',e);
-    alert('送出失敗：'+e.message+'\n\n請確認網路連線後重試');
+    let detail=e.message||'未知錯誤';
+    if(/401|未授權/.test(detail))detail='登入逾期，請重新登入';
+    else if(/network|fetch|連線|TypeError/i.test(detail))detail='無法連線至伺服器，請確認網路';
+    else if(/duplicate|重複/i.test(detail))detail='此店舖今日已有點檢記錄';
+    alert('❌ 送出失敗\n\n原因：'+detail+'\n\n建議：\n1. 確認網路連線\n2. 重新整理頁面\n3. 若問題持續，請聯絡管理員');
   }
 }
 
@@ -1934,20 +1896,11 @@ function compressPhoto(dataUrl,maxW){
 }
 
 function clearInspectForm(){
-  selectedStore=null;selectedInspector=null;inspectorId=null;
+  // 清空店舖選擇與作答；保留人員資料（已從登入帶入，所有動作均記在此人員下）
+  selectedStore=null;
   execStatus=null;calendarStores=[];
-  // 若本月 lockedStoreType 仍有值，保留（不需清除，下次 loadCalendarStores 會重新檢查）
-  // 但若是非同月換人員（罕見情況），_typeModalShown 保持 true 避免重複彈窗
-  // 注意：重新整理頁面可徹底清除 _typeModalShown 讓 Modal 再次出現
   initAnswers();
-  document.getElementById('sel-dept').value='';
-  document.getElementById('sel-section').innerHTML='<option value="">-- 先選部別 --</option>';
-  document.getElementById('sel-section').disabled=true;
-  document.getElementById('sel-inspector').innerHTML='<option value="">-- 先選課別 --</option>';
-  document.getElementById('sel-inspector').disabled=true;
-  document.getElementById('custom-inspector').value='';
-  document.getElementById('inspector-area').classList.remove('hidden');
-  document.getElementById('inspector-confirmed-area').classList.add('hidden');
+  // 人員資料 selectedInspector / inspectorId / dept / section 不清除，確保下一家可直接使用
   document.getElementById('start-bar').classList.add('hidden');
   document.getElementById('add-store-input').value='';
   document.querySelectorAll('.exec-opt').forEach(b=>b.classList.remove('yes-sel','no-sel'));
@@ -1973,14 +1926,20 @@ function buildSectionFilters(){
     secs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
   });
 }
-async function queryRecords(){
+async async function queryRecords(){
   const start=document.getElementById('r-start').value,end=document.getElementById('r-end').value;
   if(!start||!end){alert('請選擇日期範圍');return;}
   let url=`/api/inspections?start_date=${start}&end_date=${end}`;
   const sec=document.getElementById('r-section').value;
   if(sec)url+=`&section=${encodeURIComponent(sec)}`;
-  recordsData=await api(url);
-  renderRecords();document.getElementById('rec-result').classList.remove('hidden');
+  showLoading('查詢中…');
+  try{
+    recordsData=await api(url);
+    renderRecords();
+    document.getElementById('rec-result').classList.remove('hidden');
+  }catch(e){
+    alert('查詢失敗：'+(e.message||'未知錯誤'));
+  }finally{ hideLoading(); }
 }
 function renderRecords(){
   document.getElementById('rec-count').textContent=`共 ${recordsData.length} 筆`;
@@ -2095,7 +2054,7 @@ function onRecEditChange(insId,sel){
   // ── 動態顯示/隱藏「無法判斷」照片區 ──
   const selectedOpt=sel.options[sel.selectedIndex];
   const optLabel=selectedOpt?selectedOpt.textContent:'';
-  const needsPhoto=optLabel.includes('現場無法判斷');
+  const needsPhoto=!!(optLabel.includes('無法判斷')&&!optLabel.includes('無需點檢')&&!optLabel.includes('不需點檢'));
   const qid=parseInt(sel.dataset.qid);
   const row=sel.closest('.rec-edit-q');
   if(row){
@@ -2313,13 +2272,16 @@ function exportCSV(){
 }
 
 // ─── SUMMARY ───
-async function querySummary(){
+async async function querySummary(){
+  showLoading('彙整中…');
+  try{
   const start=document.getElementById('s-start').value,end=document.getElementById('s-end').value;
   if(!start||!end){alert('請選擇日期範圍');return;}
   let url=`/api/inspections?start_date=${start}&end_date=${end}`;
   const sec=document.getElementById('s-section').value;
   if(sec)url+=`&section=${encodeURIComponent(sec)}`;
   summaryData=await api(url);
+  hideLoading();
   const total=summaryData.length;
   const execCount=summaryData.filter(r=>r.exec_status==='yes').length;
   document.getElementById('sum-total-count').textContent=total;
@@ -2327,6 +2289,7 @@ async function querySummary(){
   document.getElementById('sum-noexec-count').textContent=total-execCount;
   document.getElementById('sum-result').classList.remove('hidden');
   document.getElementById('sum-export-btns').style.display='flex';
+  }catch(e){hideLoading();alert('彙整失敗：'+(e.message||'未知錯誤'));}
 }
 
 // ─── EXCEL HELPERS ───
