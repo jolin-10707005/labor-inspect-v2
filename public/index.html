@@ -1031,7 +1031,7 @@ async function doLogin(){
     const d=await r.json();
     if(!d.token){hideLoading();errEl.textContent='工號驗證失敗，請確認工號或聯絡管理員';errEl.style.display='block';return;}
     token=d.token;
-    showLoading('載入中… 同步題目與店舖資料');
+    showLoading('登入成功，載入資料中…');
   }catch(e){hideLoading();errEl.textContent='無法連線至伺服器，請確認網路';errEl.style.display='block';return;}
   // ③ 登入成功，帶入完整人員資訊
   currentUser={id:person.id,name:person.name,dept:person.dept,section:person.section,username:person.name};
@@ -1061,10 +1061,9 @@ async function initApp(){
   const today=now.toISOString().split('T')[0];
   ['r-start','r-end','s-start','s-end'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   document.getElementById('month-tag').textContent=(now.getMonth()+1)+'月份';
-  [categories,apiStores]=await Promise.all([
-    cachedApi('/api/checklist?store_type=RC'),
-    cachedApi('/api/stores'),
-  ]);
+  // 改為先只載店舖（題目交給 autoDetectStoreType 處理，避免重複 API 呼叫）
+  apiStores=await cachedApi('/api/stores');
+  categories=[]; // 先給空，autoDetectStoreType 會填
   buildDeptOptions();buildSectionFilters();initAnswers();
   // 自動帶入登入人員資料（部別/課別/姓名/工號），無法手動修改
   if(currentUser){
@@ -1081,8 +1080,9 @@ async function initApp(){
     selectedInspector=currentUser.name||'';
     inspectorId=currentUser.id||'';
     // 依當前日期自動判斷店型並載入對應題目
+    showLoading('載入店舖名單中…');
     await autoDetectStoreType();
-    loadCalendarStores();
+    await loadCalendarStores();
   }
   }finally{ hideLoading(); }
 }
@@ -1104,7 +1104,7 @@ async function autoDetectStoreType(){
     if(fcCount>0 && rcCount===0) pick='FC';
     else if(rcCount>0 && fcCount===0) pick='RC';
     else if(fcCount>0 && rcCount>0) pick=currentStoreType||'RC';
-    else return; // 兩個都沒題目
+    else { console.warn('[autoDetectStoreType] 本月無題目 month='+month); categories=[]; initAnswers(); return; }
     currentStoreType=pick;
     categories=pick==='FC'?fcCats:rcCats;
     // 更新店型按鈕 UI
