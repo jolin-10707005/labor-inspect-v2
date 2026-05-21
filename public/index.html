@@ -1322,59 +1322,9 @@ async function loadCalendarStores(){
     // 不再依舊有點檢的 store_type 鎖定，店型完全由 autoDetectStoreType 依當月題目決定
   } else {
     clearStoreTypeLock();
-    // 直接並行查詢 RC 與 FC 各自端點，不依賴合併端點
-    try{
-      // FC 與 RC 都帶月份查詢，有哪個月的題目就用哪個
-      const [fcRes,rcRes]=await Promise.allSettled([
-        api(`/api/checklist?store_type=FC&month=${month}`),
-        api(`/api/checklist?store_type=RC&month=${month}`)
-      ]);
-      // ★ 取得題目後再次確認世代，防止舊呼叫覆蓋新呼叫的 categories
-      if(myGen!==_lcGen){console.log('[loadCalendarStores] gen='+myGen+' superseded after checklist fetch, abort');return;}
-
-      const fcCats=fcRes.status==='fulfilled'?fcRes.value:[];
-      const rcCats=rcRes.status==='fulfilled'?rcRes.value:[];
-      console.log('[loadCalendarStores] gen='+myGen+' FC month='+month+':', fcCats?.length, '| RC month='+month+':', rcCats?.length);
-      const fcHas=fcCats.length>0;
-      const rcHas=rcCats.length>0;
-      if(fcHas||rcHas){
-        // FC 有題目 → FC；RC 有題目 → RC；兩者都有（設計上不應發生）→ FC 優先
-        let inferType=fcHas?'FC':'RC';
-        console.log('[StoreType] 推斷店型：FC='+fcCats.length+'筆, RC='+rcCats.length+'筆 → '+inferType);
-        // 直接使用已取得的 categories，不需再呼叫 API
-        categories=inferType==='FC'?fcCats:rcCats;
-        console.log('[loadCalendarStores] gen='+myGen+' ✅ categories set to',inferType,'('+categories.length+' cats)');
-        initAnswers();
-        // 更新 UI 並鎖定店型
-        currentStoreType=inferType;
-        // lockedStoreType 不再設定，店型完全依日期自動判定
-        document.querySelectorAll('.store-type-btn').forEach(b=>{
-          b.style.border='2px solid var(--border)';b.style.background='#fff';
-          b.style.opacity='1';b.style.cursor='pointer';
-        });
-        const _btn=document.getElementById(`btn-type-${inferType.toLowerCase()}`);
-        if(_btn){_btn.style.border='3px solid var(--teal-dark)';_btn.style.background='var(--teal-pale)';}
-        const _other=inferType==='RC'?'FC':'RC';
-        const _otherBtn=document.getElementById(`btn-type-${_other.toLowerCase()}`);
-        if(_otherBtn){_otherBtn.style.opacity='0.35';_otherBtn.style.cursor='not-allowed';_otherBtn.style.border='2px solid var(--border)';}
-        const _notice=document.getElementById('store-type-lock-notice');
-        if(_notice){
-          const _label=inferType==='RC'?'直營店（RC）':'加盟店（FC）';
-          _notice.style.display='flex';
-          _notice.style.background=inferType==='RC'?'#e0f2f1':'#fff3e0';
-          _notice.style.border=`1.5px solid ${inferType==='RC'?'var(--teal)':'#ff9800'}`;
-          _notice.style.color=inferType==='RC'?'var(--teal-dark)':'#e65100';
-          _notice.innerHTML=`🔒 本月為「${_label}」點檢，店型已自動鎖定`;
-        }
-      } else {
-        // 本月 RC 與 FC 都無題目
-        const noQMsg=document.getElementById('no-questions-msg');
-        if(noQMsg) noQMsg.style.display='block';
-      }
-    }catch(e){
-      console.warn('[loadCalendarStores] 題目查詢失敗',e);
-      if(!_typeModalShown){_typeModalShown=true;const m=document.getElementById('type-confirm-modal');if(m)m.style.display='flex';}
-    }
+    // 統一交由 autoDetectStoreType 判斷（避免兩處邏輯不一致）
+    await autoDetectStoreType();
+    if(myGen!==_lcGen){console.log('[loadCalendarStores] gen='+myGen+' superseded after autoDetect, abort');return;}
   }
   // ★ 最後確認世代，確保 renderStoreList 對應最新狀態
   if(myGen!==_lcGen){console.log('[loadCalendarStores] gen='+myGen+' superseded before renderStoreList, abort');return;}
