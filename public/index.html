@@ -1119,11 +1119,13 @@ async function autoDetectStoreType(){
   const month=getInspectMonth(dtVal);
   try{
     const [fcRes,rcRes]=await Promise.allSettled([
-      cachedApi(`/api/checklist?store_type=FC&month=${month}`),
-      cachedApi(`/api/checklist?store_type=RC&month=${month}`)
+      api(`/api/checklist?store_type=FC&month=${month}`),
+      api(`/api/checklist?store_type=RC&month=${month}`)
     ]);
     const fcCats=fcRes.status==='fulfilled'?fcRes.value:[];
     const rcCats=rcRes.status==='fulfilled'?rcRes.value:[];
+    if(fcRes.status==='fulfilled') _cacheSet(`/api/checklist?store_type=FC&month=${month}`,fcCats);
+    if(rcRes.status==='fulfilled') _cacheSet(`/api/checklist?store_type=RC&month=${month}`,rcCats);
     const fcCount=fcCats.reduce((s,c)=>s+(c.questions?.length||0),0);
     const rcCount=rcCats.reduce((s,c)=>s+(c.questions?.length||0),0);
     let pick='RC';
