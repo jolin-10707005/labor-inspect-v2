@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -440,7 +440,7 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
       <div id="inspector-area" style="display:none"><select id="sel-inspector"><option value=""></option></select><input type="text" id="custom-inspector"></div>
       <div id="inspector-confirmed-area">
         <div class="inspector-confirmed" style="background:#e6f4f1;border:1.5px solid var(--teal);border-radius:var(--r2);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
-          <span class="name" style="font-weight:600">👤 <span id="confirmed-name">—</span></span>
+          <span class="name" style="font-weight:600;color:#1a3a3a">👤 <span id="confirmed-name">—</span></span>
           <span style="font-size:11px;color:var(--text3);background:#fff;padding:2px 8px;border-radius:10px">已登入</span>
         </div>
 
@@ -1607,6 +1607,7 @@ function renderFlatQ(q,num,catName,isSkipped){
   // 無法判斷說明欄只在工時薪資(param=329)顯示
   const selOpt=q.options.find(o=>o.id===ans.opt_id);
   const needsPhoto=!!(selOpt&&selOpt.label.includes('請拍照記錄'));
+  const canPhoto=ans.canPhoto;
   const hasAns=!!ans.opt_id;
 
   if(isSkipped){
@@ -1631,10 +1632,20 @@ function renderFlatQ(q,num,catName,isSkipped){
       </button>`;
     }).join('')}</div>
     ${needsPhoto?`<div id="unclear-block-${q.id}" style="margin-top:8px;padding:10px;background:var(--red-bg);border-radius:var(--r2);border:1.5px solid var(--red-border)">
-      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:4px">⚠ 選擇「無法判斷」請填寫原因並上傳照片<span class="req">（必填）</span></div><div style="font-size:11px;color:var(--text3);margin-bottom:6px">💡 若現場無法拍照，請於原因中註明「無法拍照」即可跳過照片上傳</div>
-      <textarea class="q-note" id="qnote-${q.id}" placeholder="請填寫無法判斷原因..." onchange="setNote(${q.id},this.value)" style="border-color:${ans.note?'var(--border)':'var(--red)'}">${ans.note||''}</textarea>
-      ${renderPhotoArea(q.id)}
-      ${!(photosByQ[q.id]||[]).length?`<div style="font-size:12px;color:var(--red);margin-top:4px">📷 尚未上傳照片</div>`:''}
+      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px">⚠ 選擇「無法判斷」請先選擇拍照情況<span class="req">（必選）</span></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <label style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 10px;border-radius:8px;background:${canPhoto===false?'#ffeaea':'#fff'};border:1.5px solid ${canPhoto===false?'var(--red)':'var(--border)'}">
+          <input type="radio" name="canphoto-${q.id}" value="no" ${canPhoto===false?'checked':''} onchange="setCanPhoto(${q.id},false)">
+          <span><strong>🚫 無法拍照店鋪</strong><br><span style="font-size:11px;color:var(--text3)">僅需填寫原因文字</span></span>
+        </label>
+        <label style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 10px;border-radius:8px;background:${canPhoto===true?'#e6f4f1':'#fff'};border:1.5px solid ${canPhoto===true?'var(--teal)':'var(--border)'}">
+          <input type="radio" name="canphoto-${q.id}" value="yes" ${canPhoto===true?'checked':''} onchange="setCanPhoto(${q.id},true)">
+          <span><strong>📷 可拍照店鋪</strong><br><span style="font-size:11px;color:var(--text3)">需填原因並上傳照片</span></span>
+        </label>
+      </div>
+      ${canPhoto!==undefined?`<textarea class="q-note" id="qnote-${q.id}" placeholder="請填寫無法判斷原因..." onchange="setNote(${q.id},this.value)" style="border-color:${ans.note?'var(--border)':'var(--red)'}">${ans.note||''}</textarea>
+      ${canPhoto===true?renderPhotoArea(q.id)+(!(photosByQ[q.id]||[]).length?'<div style="font-size:12px;color:var(--red);margin-top:4px">📷 尚未上傳照片</div>':''):''}
+      `:'<div style="font-size:12px;color:var(--text3);text-align:center;padding:6px 0">👆 請先選擇上方拍照情況</div>'}
     </div>`:''}
   </div>`;
 }
@@ -1754,6 +1765,11 @@ function setNote(qId,note){
   const el=document.getElementById(`qnote-${qId}`);
   if(el)el.style.borderColor=note.trim()?'var(--border)':'var(--red)';
 }
+function setCanPhoto(qId,canPhotoFlag){
+  if(!answers[qId])answers[qId]={};
+  answers[qId].canPhoto=canPhotoFlag;
+  renderAllQuestions();
+}
 
 // ─── SUBMIT ───
 async function submitInspection(){
@@ -1802,8 +1818,14 @@ async function submitInspection(){
       if(answers[q.id]?.skipped)continue;
       const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
       if(!selOpt||!selOpt.label.includes('請拍照記錄'))continue;
+      const canPhotoSel=answers[q.id]?.canPhoto;
       const note=(answers[q.id]?.note||'').trim();
       const photos=photosByQ[q.id]||[];
+      if(canPhotoSel===undefined){
+        const block=document.getElementById(`unclear-block-${q.id}`);
+        if(block)block.scrollIntoView({behavior:'smooth',block:'center'});
+        alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n選擇「無法判斷」，請先勾選拍照情況`);return;
+      }
       if(!note){
         const el=document.getElementById(`qnote-${q.id}`);
         if(el){el.style.borderColor='var(--red)';el.focus();}
@@ -1811,10 +1833,10 @@ async function submitInspection(){
         if(block)block.scrollIntoView({behavior:'smooth',block:'center'});
         alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n選擇「無法判斷」，請填寫原因`);return;
       }
-      if(!skipPhoto && !photos.length){
+      if(canPhotoSel===true&&!photos.length){
         const block=document.getElementById(`unclear-block-${q.id}`);
         if(block)block.scrollIntoView({behavior:'smooth',block:'center'});
-        alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n選擇「無法判斷」，請上傳照片（若現場無法拍照，請於原因說明中註明「無法拍照」即可跳過）`);return;
+        alert(`Q${qi+1}「${q.content.slice(0,15)}…」\n已選「可拍照店鋪」，請上傳照片`);return;
       }
     }
   }
