@@ -1342,7 +1342,7 @@ async function loadCalendarStores(){
         initAnswers();
         // 更新 UI 並鎖定店型
         currentStoreType=inferType;
-        lockedStoreType=inferType;
+        // lockedStoreType 不再設定，店型完全依日期自動判定
         document.querySelectorAll('.store-type-btn').forEach(b=>{
           b.style.border='2px solid var(--border)';b.style.background='#fff';
           b.style.opacity='1';b.style.cursor='pointer';
@@ -1758,9 +1758,7 @@ async function submitInspection(){
     alert('⚠ 當月點檢題目尚未設定，無法送出。\n請至維護專區匯入本月題目。');
     return;
   }
-  if(lockedStoreType&&currentStoreType!==lockedStoreType){
-    alert(`⚠ 店型異常：本月應點「${lockedStoreType==='RC'?'直營店（RC）':'加盟店（FC）'}」，目前卻為「${currentStoreType}」。\n請返回基本資料重新選擇。`);return;
-  }
+  // 店型已改由日期自動判定，不再做 lockedStoreType 檢查
   if(!execStatus){alert('請先選擇查核作業是否執行');return;}
   if(execStatus==='other'&&!document.getElementById('exec-other-txt').value.trim()){alert('請填寫其他原因');return;}
 
@@ -1876,8 +1874,7 @@ async function submitInspection(){
     payload.paper_photo=paperPhotoData||'';
     const result=await api('/api/inspections','POST',payload);
     completedStores.add(selectedStore.code);
-    // 送出後鎖定本月店型（若尚未鎖定）
-    if(!lockedStoreType) applyStoreTypeLock(currentStoreType);
+    // 不再鎖定店型（由日期判定）
     hideLoading();
     // Show completion
     const msg='✅ 查核完成';
