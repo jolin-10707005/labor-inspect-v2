@@ -1601,7 +1601,7 @@ function renderFlatQ(q,num,catName,isSkipped){
   const ans=answers[q.id]||{};
   // 無法判斷說明欄只在工時薪資(param=329)顯示
   const selOpt=q.options.find(o=>o.id===ans.opt_id);
-  const needsPhoto=!!(selOpt&&selOpt.label.includes('現場無法判斷'));
+  const needsPhoto=!!(selOpt&&selOpt.label.includes('請拍照記錄'));
   const hasAns=!!ans.opt_id;
 
   if(isSkipped){
@@ -1796,7 +1796,7 @@ async function submitInspection(){
       const q=allQs[qi];
       if(answers[q.id]?.skipped)continue;
       const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
-      if(!selOpt||!selOpt.label.includes('現場無法判斷'))continue;
+      if(!selOpt||!selOpt.label.includes('請拍照記錄'))continue;
       const note=(answers[q.id]?.note||'').trim();
       const photos=photosByQ[q.id]||[];
       if(!note){
@@ -1822,7 +1822,7 @@ async function submitInspection(){
       const sName=(selectedStore.name||'').replace(/[\\/:*?"<>|]/g,'_');
       for(const q of allQs){
         const selOpt=q.options.find(o=>o.id===answers[q.id]?.opt_id);
-        if(!selOpt||!selOpt.label.includes('現場無法判斷'))continue;
+        if(!selOpt||!selOpt.label.includes('請拍照記錄'))continue;
         const photos=photosByQ[q.id]||[];
         if(!photos.length)continue;
         // 檔名：店名-問題簡稱-無法判斷（多張加序號）
@@ -2021,7 +2021,7 @@ async function toggleRecordDetail(id,storeType,auditDate){
           const opts=qOptsMap[a.question_id]||[];
           const optHtml=opts.map(o=>`<option value="${o.id}" data-skip='${JSON.stringify(o.skip_items||[])}' ${String(o.id)===String(a.opt_id)?'selected':''}>${o.label}</option>`).join('');
           // 判斷是否需要照片（option label 含 無法判斷 或 拍照）
-          const needsEditPhoto=(a.option_label||'').includes('現場無法判斷');
+          const needsEditPhoto=(a.option_label||'').includes('請拍照記錄');
           const existPhotoUrl=a.note&&a.note.startsWith('https://')?a.note:'';
           html+=`<div class="rec-edit-q" id="req-${id}-${a.question_id}" data-qid="${a.question_id}" ${a.skipped?'style="opacity:.45"':''}>
             <div class="rec-edit-qlabel">${a.question_content}</div>
@@ -2065,7 +2065,7 @@ function onRecEditChange(insId,sel){
   // ── 動態顯示/隱藏「無法判斷」照片區 ──
   const selectedOpt=sel.options[sel.selectedIndex];
   const optLabel=selectedOpt?selectedOpt.textContent:'';
-  const needsPhoto=optLabel.includes('現場無法判斷');
+  const needsPhoto=optLabel.includes('請拍照記錄');
   const qid=parseInt(sel.dataset.qid);
   const row=sel.closest('.rec-edit-q');
   if(row){
