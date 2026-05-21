@@ -1060,7 +1060,7 @@ async function initApp(){
   document.getElementById('inspect-dt').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const today=now.toISOString().split('T')[0];
   ['r-start','r-end','s-start','s-end'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
-  document.getElementById('month-tag').textContent=(now.getMonth()+1)+'月份';
+  document.getElementById('month-tag').textContent=getInspectMonth(document.getElementById('inspect-dt').value)+'月份';
   // 改為先只載店舖（題目交給 autoDetectStoreType 處理，避免重複 API 呼叫）
   apiStores=await cachedApi('/api/stores');
   categories=[]; // 先給空，autoDetectStoreType 會填
@@ -1289,32 +1289,11 @@ async function loadCalendarStores(){
     calendarStores=list.filter(s=>{if(seen.has(s.code))return false;seen.add(s.code);return true;}).map(s=>({...s,code:pad6(s.code)}));
   }
 
-  // ── 處理本月已點檢店鋪 & 店型鎖定 ──
+  // ── 處理本月已點檢店鋪（標記完成，不再依此強制切換店型）──
   if(existing&&existing.length){
     existing.forEach(r=>completedStores.add(pad6(r.store_code)));
-    const lockType=existing[0].store_type||'RC';
-    console.log('[loadCalendarStores] gen='+myGen+' existing inspections found, lockType='+lockType+', month='+month);
-    // 先取得對應題目再鎖定（避免 applyStoreTypeLock 內 selectStoreType 用錯月份）
-    try{
-      const lockCats=await cachedApi(`/api/checklist?store_type=${lockType}&month=${month}`);
-      if(myGen!==_lcGen){console.log('[loadCalendarStores] gen='+myGen+' superseded after lockCats fetch, abort');return;}
-      console.log('[loadCalendarStores] gen='+myGen+' lockCats:', lockCats?.length, '筆');
-      if(lockCats.length>0){
-        categories=lockCats;
-        // 先設好 currentStoreType，applyStoreTypeLock 就不會再呼叫 selectStoreType
-        currentStoreType=lockType;
-        initAnswers();
-      } else {
-        console.warn('[loadCalendarStores] 既有點檢為'+lockType+'，但 month='+month+' 無對應題目');
-        const noQMsg=document.getElementById('no-questions-msg');
-        if(noQMsg) noQMsg.style.display='block';
-      }
-    }catch(e){
-      console.warn('[loadCalendarStores] lockCats 查詢失敗',e);
-    }
-    await applyStoreTypeLock(lockType);
-    // ★ applyStoreTypeLock 是 async，await 後需再次確認世代
-    if(myGen!==_lcGen){console.log('[loadCalendarStores] gen='+myGen+' superseded after applyStoreTypeLock, abort');return;}
+    console.log('[loadCalendarStores] gen='+myGen+' existing inspections found, count='+existing.length);
+    // 不再依舊有點檢的 store_type 鎖定，店型完全由 autoDetectStoreType 依當月題目決定
   } else {
     clearStoreTypeLock();
     // 直接並行查詢 RC 與 FC 各自端點，不依賴合併端點
