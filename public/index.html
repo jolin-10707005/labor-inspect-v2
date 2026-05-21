@@ -827,6 +827,20 @@ let recordsData=[],summaryData=[];
 let _clCache={RC:null,FC:null},_detailCache={};
 
 // ─── 本地快取（題目/店舖／月更動）───
+// ─── 點檢月份計算（每月 2 號~次月 1 號為同一月）───
+function getInspectMonth(dateStr){
+  if(!dateStr){
+    const t=new Date();
+    const tm=t.getMonth()+1, td=t.getDate();
+    return td===1?(tm===1?12:tm-1):tm;
+  }
+  const m=parseInt(dateStr.slice(5,7));
+  const d=parseInt(dateStr.slice(8,10));
+  if(isNaN(m)||isNaN(d)) return new Date().getMonth()+1;
+  // 1 號 → 算上一個月
+  if(d===1){ return m===1 ? 12 : m-1; }
+  return m;
+}
 const CACHE_VERSION = '2026-05-19-v3'; // 版本變更會自動清快取
 (function(){ const lv = localStorage.getItem('ci_cache_version'); if(lv !== CACHE_VERSION){ Object.keys(localStorage).filter(k=>k.startsWith('ci_cache::')).forEach(k=>localStorage.removeItem(k)); localStorage.setItem('ci_cache_version', CACHE_VERSION); console.log('[cache] cleared due to version change'); } })();
 const CACHE_TTL_MS = 24*60*60*1000; // 24 小時
