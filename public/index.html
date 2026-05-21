@@ -1067,6 +1067,18 @@ async function initApp(){
   buildDeptOptions();buildSectionFilters();initAnswers();
   // 自動帶入登入人員資料（部別/課別/姓名/工號），無法手動修改
   if(currentUser){
+    // 若 localStorage 內舊資料缺欄位，主動從 PERSONNEL 補齊
+    if(currentUser.id && (!currentUser.dept || !currentUser.section || !currentUser.name)){
+      const normId=v=>String(v).replace(/^0+/,'')||'0';
+      const p=PERSONNEL.find(x=>normId(x.id)===normId(currentUser.id));
+      if(p){
+        currentUser.dept=p.dept;
+        currentUser.section=p.section;
+        currentUser.name=p.name;
+        localStorage.setItem('ci_user',JSON.stringify(currentUser));
+        console.log('[initApp] currentUser 補齊 from PERSONNEL:',currentUser);
+      }
+    }
     const dDisp=document.getElementById('sel-dept-display');
     const sDisp=document.getElementById('sel-section-display');
     const nDisp=document.getElementById('confirmed-name');
@@ -1090,7 +1102,7 @@ async function initApp(){
 // 依點檢日期自動偵測店型：當月有 FC 題目用 FC，有 RC 題目用 RC
 async function autoDetectStoreType(){
   const dtVal=document.getElementById('inspect-dt')?.value||'';
-  const month=dtVal?parseInt(dtVal.slice(5,7)):(new Date().getMonth()+1);
+  const month=getInspectMonth(dtVal);
   try{
     const [fcRes,rcRes]=await Promise.allSettled([
       cachedApi(`/api/checklist?store_type=FC&month=${month}`),
@@ -1133,7 +1145,7 @@ async function selectStoreType(type){
   if(btn){btn.style.border='3px solid var(--teal-dark)';btn.style.background='var(--teal-pale)';}
   // FC 與 RC 都依點檢月份篩選
   const _dtVal=document.getElementById('inspect-dt')?.value||'';
-  const _auditMonth=_dtVal?parseInt(_dtVal.slice(5,7)):null;
+  const _auditMonth=_dtVal?getInspectMonth(_dtVal):null;
   const _url=_auditMonth
     ?`/api/checklist?store_type=${type}&month=${_auditMonth}`
     :`/api/checklist?store_type=${type}`;
@@ -1144,7 +1156,7 @@ async function selectStoreType(type){
 // 點檢日期變更時，若已選好店型則重新載入對應月份的題目
 async function onInspectDtChange(){
   const dtVal=document.getElementById('inspect-dt')?.value||'';
-  const newMonth=dtVal?parseInt(dtVal.slice(5,7)):null;
+  const newMonth=dtVal?getInspectMonth(dtVal):null;
   if(!newMonth) return;
   document.getElementById('month-tag').textContent=newMonth+'月份';
   // 依日期自動偵測店型並載入題目
@@ -1162,7 +1174,7 @@ async function applyStoreTypeLock(type){
   if(type){
     currentStoreType=type;
     const dtVal=document.getElementById('inspect-dt')?.value||'';
-    const month=dtVal?parseInt(dtVal.slice(5,7)):(new Date().getMonth()+1);
+    const month=getInspectMonth(dtVal);
     try{
       categories=await cachedApi(`/api/checklist?store_type=${type}&month=${month}`);
       initAnswers();
@@ -1258,8 +1270,8 @@ async function loadCalendarStores(){
   const pad6=c=>String(c==null?'':c).padStart(6,'0');
   // 以點檢日期的月份為準（若未選則使用系統月份）
   const dtVal=document.getElementById('inspect-dt')?.value||'';
-  const month=dtVal?parseInt(dtVal.slice(5,7)):now.getMonth()+1;
-  const dtYear=dtVal?parseInt(dtVal.slice(0,4)):now.getFullYear();
+  const month=dtVal?getInspectMonth(dtVal):(new Date().getDate()===1?(new Date().getMonth()===0?12:new Date().getMonth()):new Date().getMonth()+1);
+  let dtYear=dtVal?parseInt(dtVal.slice(0,4)):now.getFullYear();  // 若為 1 號且回推到 12 月，年份需要 -1  if(dtVal && parseInt(dtVal.slice(8,10))===1 && month===12) dtYear--;
   // 更新月份標籤
   document.getElementById('month-tag').textContent=month+'月份';
 
