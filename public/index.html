@@ -432,7 +432,13 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
       <div class="sec-lbl">點檢時間</div>
       <div class="f-group">
         <label>點檢日期與時間<span class="req">*</span></label>
-        <input type="datetime-local" class="f-inp" id="inspect-dt" onchange="onInspectDtChange()">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="date" id="inspect-date" class="f-inp" style="flex:2;min-width:0" onchange="onInspectDtPartsChange('date')">
+          <select id="inspect-hour" class="f-inp" style="flex:1;min-width:0;padding:10px 4px;text-align:center;font-size:15px;font-weight:600"></select>
+          <span style="font-size:18px;font-weight:700;color:var(--teal-dark);flex-shrink:0">:</span>
+          <select id="inspect-min" class="f-inp" style="flex:1;min-width:0;padding:10px 4px;text-align:center;font-size:15px;font-weight:600"></select>
+        </div>
+        <input type="datetime-local" id="inspect-dt" style="display:none">
       </div>
 
       <div class="sec-lbl">點檢人員</div>
@@ -1071,7 +1077,7 @@ async function initApp(){
   document.getElementById('app').style.display='flex';
   try{
   const now=new Date(),pad=n=>String(n).padStart(2,'0');
-  document.getElementById('inspect-dt').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  setInspectDt(`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
   const today=now.toISOString().split('T')[0];
   ['r-start','r-end','s-start','s-end'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   document.getElementById('month-tag').textContent=getInspectMonth(document.getElementById('inspect-dt').value)+'月份';
@@ -1902,7 +1908,7 @@ function clearInspectForm(){
   document.getElementById('paper-photo-preview').innerHTML='';
   document.getElementById('paper-photo-card').classList.remove('missing');
   const now=new Date(),pad=n=>String(n).padStart(2,'0');
-  document.getElementById('inspect-dt').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  setInspectDt(`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
   // 重設時間後同步更新月份標籤，並重新載入題目與店舖名單
   document.getElementById('month-tag').textContent=getInspectMonth(document.getElementById('inspect-dt').value)+'月份';
   if(selectedInspector){ autoDetectStoreType().then(()=>loadCalendarStores()); }
@@ -3638,8 +3644,45 @@ function switchTab(t){
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function closeOvl(e,id){if(e.target.id===id)closeModal(id);}
 
+// ─── INSPECT-DT PICKER (24h) ───
+function initInspectDtPicker(){
+  const hSel=document.getElementById('inspect-hour');
+  const mSel=document.getElementById('inspect-min');
+  if(!hSel||!mSel)return;
+  for(let h=0;h<24;h++){const o=document.createElement('option');o.value=String(h).padStart(2,'0');o.textContent=String(h).padStart(2,'0')+'時';hSel.appendChild(o);}
+  for(let m=0;m<60;m++){const o=document.createElement('option');o.value=String(m).padStart(2,'0');o.textContent=String(m).padStart(2,'0')+'分';mSel.appendChild(o);}
+  // attach change handler
+  hSel.onchange=()=>onInspectDtPartsChange('time');
+  mSel.onchange=()=>onInspectDtPartsChange('time');
+}
+function setInspectDt(dtStr){
+  const hidden=document.getElementById('inspect-dt');
+  if(hidden)hidden.value=dtStr;
+  if(!dtStr||!dtStr.includes('T'))return;
+  const [date,time]=dtStr.split('T');
+  const parts=(time||'').split(':');
+  const h=(parts[0]||'00').slice(0,2).padStart(2,'0');
+  const m=(parts[1]||'00').slice(0,2).padStart(2,'0');
+  const dEl=document.getElementById('inspect-date');
+  const hEl=document.getElementById('inspect-hour');
+  const mEl=document.getElementById('inspect-min');
+  if(dEl)dEl.value=date;
+  if(hEl)hEl.value=h;
+  if(mEl)mEl.value=m;
+}
+function onInspectDtPartsChange(field){
+  const d=document.getElementById('inspect-date')?.value||'';
+  const h=document.getElementById('inspect-hour')?.value||'00';
+  const m=document.getElementById('inspect-min')?.value||'00';
+  if(!d)return;
+  const dtStr=`${d}T${h}:${m}`;
+  const hidden=document.getElementById('inspect-dt');
+  if(hidden)hidden.value=dtStr;
+  if(field==='date')onInspectDtChange();
+}
 // ─── BOOT ───
 initLoginForm();
+initInspectDtPicker();
 if(token&&currentUser)initApp();
 </script>
 </body>
