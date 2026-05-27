@@ -621,3 +621,78 @@ function clearTestData() {
   Logger.log('=== 清除結果 ===\n' + results.join('\n'));
   SpreadsheetApp.getUi().alert('清除完成！\n\n' + results.join('\n'));
 }
+
+// ══════════════════════════════════════════════
+// clearWrongMonthCategories()
+// 清除誤植到錯誤活頁的月份題目
+// 使用情境：例如 FC 題目誤以 RC 格式上傳，跑到 categories 活頁
+// 執行前請先修改下方 TARGET_MONTH 與 TARGET_SHEET
+// ══════════════════════════════════════════════
+function clearWrongMonthCategories() {
+  // ★ 請修改這兩個參數 ★
+  const TARGET_MONTH = 6;                // 要清除的月份
+  const TARGET_SHEET = 'categories';     // 'categories'(RC) 或 'categories_FC'(FC)
+
+  const catSheet = getSheet(TARGET_SHEET);
+  const qSheet   = getSheet(TARGET_SHEET === 'categories_FC' ? 'questions_FC' : 'questions');
+  const optSheet = getSheet(TARGET_SHEET === 'categories_FC' ? 'options_FC'   : 'options');
+
+  if (!catSheet) { Logger.log('找不到活頁：' + TARGET_SHEET); return; }
+
+  const catData = catSheet.getDataRange().getValues();
+  const catHdr  = catData[0];
+  const monthCol = catHdr.indexOf('month');
+  const idCol    = catHdr.indexOf('id');
+  if (monthCol < 0 || idCol < 0) { Logger.log('找不到 month 或 id 欄'); return; }
+
+  // 收集要刪除的 category id
+  const delCatIds = new Set();
+  for (let i = 1; i < catData.length; i++) {
+    if (parseInt(catData[i][monthCol]) === TARGET_MONTH) delCatIds.add(String(catData[i][idCol]));
+  }
+  if (delCatIds.size === 0) {
+    SpreadsheetApp.getUi().alert(`${TARGET_SHEET} 中找不到 ${TARGET_MONTH} 月資料，無需清除`);
+    return;
+  }
+
+  // 收集對應的 question id
+  const delQIds = new Set();
+  if (qSheet) {
+    const qData = qSheet.getDataRange().getValues();
+    const qHdr  = qData[0];
+    const qCatCol = qHdr.indexOf('category_id');
+    const qIdCol  = qHdr.indexOf('id');
+    for (let i = 1; i < qData.length; i++) {
+      if (delCatIds.has(String(qData[i][qCatCol]))) delQIds.add(String(qData[i][qIdCol]));
+    }
+  }
+
+  // 由下往上刪 options → questions → categories
+  let delOpt = 0, delQ = 0, delCat = 0;
+  if (optSheet && delQIds.size > 0) {
+    const optData = optSheet.getDataRange().getValues();
+    const optHdr  = optData[0];
+    const optQCol = optHdr.indexOf('question_id');
+    for (let i = optData.length - 1; i >= 1; i--) {
+      if (delQIds.has(String(optData[i][optQCol]))) { optSheet.deleteRow(i + 1); delOpt++; }
+    }
+  }
+  if (qSheet && delQIds.size > 0) {
+    const qData2 = qSheet.getDataRange().getValues();
+    const qHdr2  = qData2[0];
+    const qCatCol2 = qHdr2.indexOf('category_id');
+    for (let i = qData2.length - 1; i >= 1; i--) {
+      if (delCatIds.has(String(qData2[i][qCatCol2]))) { qSheet.deleteRow(i + 1); delQ++; }
+    }
+  }
+  const catData2 = catSheet.getDataRange().getValues();
+  const monthCol2 = catData2[0].indexOf('month');
+  for (let i = catData2.length - 1; i >= 1; i--) {
+    if (parseInt(catData2[i][monthCol2]) === TARGET_MONTH) { catSheet.deleteRow(i + 1); delCat++; }
+  }
+
+  SpreadsheetApp.flush();
+  const msg = `清除完成！\n活頁：${TARGET_SHEET}\n月份：${TARGET_MONTH} 月\n\n類別：${delCat} 筆\n題目：${delQ} 筆\n選項：${delOpt} 筆`;
+  Logger.log(msg);
+  SpreadsheetApp.getUi().alert(msg);
+}
