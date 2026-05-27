@@ -2441,12 +2441,12 @@ function buildFCRow(r, fcAns){
   }
   // 主欄：優先用「主要答案」，若空且有無法判斷則用無法判斷標籤
   function colMain(catKw, topicKw){ return getMain(catKw,topicKw)||getUnlabel(catKw,topicKw); }
-  // 5-外籍學生各加班類：topic="國定假日"/"休息日加班"/"平日加班"（存在 qc 欄）
+  // 5-加班作業各類：topic="國定假日"/"休息日加班"/"平日加班"（存在 qc 欄）
   function getOvertime(topic){
     const main=fcAns.find(x=>
-      x.cat.includes('外籍')&&hasTopic(x,topic)&&!isJudge(x)&&!x.skipped&&x.label
+      x.cat.includes('加班')&&hasTopic(x,topic)&&!isJudge(x)&&!x.skipped&&x.label
     );
-    if(!main)return getUnlabel('外籍',topic);
+    if(!main)return getUnlabel('加班',topic);
     return main.label;
   }
 
@@ -2472,7 +2472,7 @@ function buildFCRow(r, fcAns){
     return a?(a.noteText||''):'';
   }
   function getOverNote(topic){
-    const a=fcAns.find(x=>x.cat.includes('外籍')&&hasTopic(x,topic)&&isJudge(x)&&!x.skipped);
+    const a=fcAns.find(x=>x.cat.includes('加班')&&hasTopic(x,topic)&&isJudge(x)&&!x.skipped);
     return a?(a.noteText||''):'';
   }
 
@@ -2502,13 +2502,13 @@ function buildFCRow(r, fcAns){
     anyPhoto('出勤紀錄',''),                       // X  4 無法判斷-照片
     getOvertime('國定假日'),                       // Y  5 國定假日
     getOverNote('國定假日'),                       // Z  5 國定假日-原因
-    getPhoto('外籍','國定假日'),                   // AA 5 國定假日-照片
+    getPhoto('加班','國定假日'),                   // AA 5 國定假日-照片
     getOvertime('休息日加班'),                     // AB 5 休息日加班
     getOverNote('休息日加班'),                     // AC 5 休息日-原因
-    getPhoto('外籍','休息日加班'),                 // AD 5 休息日-照片
+    getPhoto('加班','休息日加班'),                 // AD 5 休息日-照片
     getOvertime('平日加班'),                       // AE 5 平日加班
     getOverNote('平日加班'),                       // AF 5 平日加班-原因
-    getPhoto('外籍','平日加班'),                   // AG 5 平日加班-照片
+    getPhoto('加班','平日加班'),                   // AG 5 平日加班-照片
     r.paper_photo&&r.paper_photo.startsWith('http')?r.paper_photo:''  // AH (col 33) 完成照片
   ];
 }
