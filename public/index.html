@@ -2669,10 +2669,60 @@ async function exportPayInternal(){
   const{execStores,rcCount,otherCount,total}=getStoreCounts(summaryData);
   const titleMain=`# 請款明細(${start}-${end}): 合計評核${total}店（直營RC ${rcCount}店，加盟 ${otherCount}店）。`;
 
-  const rcUnit=125,otherUnit=250,doc=8000;
-  const rcCodes=new Set(CALENDAR_RC.map(c=>c.code));
-
   // 課別→部別對照
+  const sectionToDept={};
+  PERSONNEL.forEach(p=>{sectionToDept[p.section]=p.dept;});
+
+  const rcCodes=new Set(CALENDAR_RC.map(c=>c.code));
+  const deptMap={};
+  execStores.forEach(r=>{
+    const dept=sectionToDept[r.section]||r.section||'其他';
+    if(!deptMap[dept])deptMap[dept]=[];
+    deptMap[dept].push(r);
+  });
+
+  const depts=Object.keys(deptMap).sort((a,b)=>{
+    if(a==='業務部')return -1;
+    if(b==='業務部')return 1;
+    return a.localeCompare(b,'zh-TW');
+  });
+
+  const rcUnit=125,otherUnit=250,doc=8000;
+  const rows=[...buildPaySummary(titleMain,rcCount,otherCount)];
+
+  depts.forEach(dept=>{
+    const stores=deptMap[dept];
+    const dRC=stores.filter(r=>rcCodes.has(r.store_code)).length;
+    const dOther=stores.length-dRC;
+    const isBusinessDept=(dept==='業務部');
+    const deptTitle=`# 請款明細(${start}-${end}):盤點中心${dept}`;
+    const dSub=dRC*rcUnit+dOther*otherUnit;
+    const docFee=isBusinessDept?doc:0;
+    const dTax=Math.round((dSub+docFee)*0.05*10)/10;
+    const dTotal=dSub+docFee+dTax;
+
+    rows.push(['','','','','',''],['','','','','',''],['','','','','','']);
+    rows.push([deptTitle,'','','','','']);
+    rows.push(['項目 ','數量','單價','小計','備註','']);
+    if(dRC>0)  rows.push([dOther===0?'點檢費':'直營(RC)點檢費',dRC,rcUnit,dRC*rcUnit,'','']);
+    if(dOther>0) rows.push(['加盟點檢費',dOther,otherUnit,dOther*otherUnit,'','']);
+    if(isBusinessDept) rows.push(['文件處理費',1,doc,doc,'','']);
+    rows.push(
+      ['合計','','',dSub+docFee,'',''],
+      ['5%稅金','','',dTax,'',''],
+      ['總計','','',dTotal,'',''],
+    );
+  });
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'請款明細(內部)');
+  // 各課明細活頁
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(buildSectionDetail(execStores,rcCodes)),'各課明細');
+  XLSX.writeFile(wb,`全家勞動檢查-請款金額-內部_${toROC(start)}-${toROC(end)}.xlsx`);
+}
+
+function buildSectionDetail(execStores,rcCodes){
+  const rcUnit=125,otherUnit=250,doc=8000;
   const sectionToDept={};
   PERSONNEL.forEach(p=>{if(!sectionToDept[p.section])sectionToDept[p.section]=p.dept;});
 
@@ -2685,55 +2735,29 @@ async function exportPayInternal(){
     secStats[sec].amount+=rcCodes.has(r.store_code)?rcUnit:otherUnit;
   });
 
-  // 部別總統計
-  const deptStats={};
-  execStores.forEach(r=>{
-    const dept=sectionToDept[r.section||'']||'其他';
-    if(!deptStats[dept])deptStats[dept]={count:0,amount:0};
-    deptStats[dept].count++;
-    deptStats[dept].amount+=rcCodes.has(r.store_code)?rcUnit:otherUnit;
-  });
-
   const DEPT_CFG=[
-    {key:'業務部',label:'盤點業務部',sections:[],hasDoc:true},
-    {key:'一部',label:'盤點中心一部',sections:['北一課','北二課','北三課','北四課','桃竹課'],hasDoc:false},
-    {key:'二部',label:'盤點中心二部',sections:['台中課','嘉南課','高屏課'],hasDoc:false},
+    {key:'一部',sections:['北一課','北二課','北三課','北四課','桃竹課']},
+    {key:'二部',sections:['台中課','嘉南課','高屏課']},
   ];
 
-  const rows=[...buildPaySummary(titleMain,rcCount,otherCount)];
+  const rows=[['課別','實際','請款金額']];
+  let grand=0;
 
-  DEPT_CFG.forEach(({key,label,sections,hasDoc})=>{
-    const ds=deptStats[key]||{count:0,amount:0};
-    const docFee=hasDoc?doc:0;
-    const dSub=ds.amount+docFee;
-    const dTax=Math.round(dSub*0.05*10)/10;
-    const dTotal=dSub+dTax;
-
-    rows.push(['','','','',''],['','','','',''],['','','','','']);
-    rows.push([`# 請款明細(${start}-${end}):${label}`,'','','','']);
-
-    if(sections.length){
-      rows.push(['課別','實際(店數)','請款金額','','']);
-      sections.forEach(sec=>{
-        const s=secStats[sec]||{count:0,amount:0};
-        rows.push([sec,s.count,s.amount,'','']);
-      });
-      rows.push([key+' 小計',ds.count,ds.amount,'','']);
-    } else {
-      rows.push(['項目','數量','單價','小計','']);
-    }
-
-    if(hasDoc) rows.push(['文件處理費',1,doc,doc,'']);
-    rows.push(
-      ['合計','','',dSub,''],
-      ['5%稅金','','',dTax,''],
-      ['總計','','',dTotal,''],
-    );
+  DEPT_CFG.forEach(({key,sections})=>{
+    let dCount=0,dAmount=0;
+    sections.forEach(sec=>{
+      const s=secStats[sec]||{count:0,amount:0};
+      rows.push([sec,s.count,s.amount]);
+      dCount+=s.count; dAmount+=s.amount;
+    });
+    rows.push([key,dCount,dAmount]);  // 部別小計
+    grand+=dAmount;
   });
 
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'請款明細(內部)');
-  XLSX.writeFile(wb,`全家勞動檢查-請款金額-內部_${toROC(start)}-${toROC(end)}.xlsx`);
+  rows.push(['文件處理費','',doc]);
+  grand+=doc;
+  rows.push(['合計','',grand]);
+  return rows;
 }
 
 // ─── ROC YEAR HELPERS ───
