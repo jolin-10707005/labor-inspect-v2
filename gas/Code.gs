@@ -106,8 +106,13 @@ function deleteRowsByField(sheetName, field, value) {
   const headers = data[0];
   const col = headers.indexOf(field);
   if (col < 0) return;
-  for (let i = data.length - 1; i >= 1; i--) {
-    if (String(data[i][col]) === String(value)) s.deleteRow(i + 1);
+  // 批次過濾：保留標題 + 不符合條件的列，一次性重寫（避免逐列 deleteRow 的 O(n²) 問題）
+  const keep = data.filter((row, i) => i === 0 || String(row[col]) !== String(value));
+  s.clearContents();
+  if (keep.length > 0) {
+    s.getRange(1, 1, keep.length, headers.length).setValues(keep);
+  } else {
+    s.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
 }
 
@@ -623,21 +628,26 @@ function handleGetAssigned(params) {
 }
 function handleSetAssigned(body) {
   const { month, stores } = body;
-  if (!month || !stores) return fail('month and stores required');
+  if (!month || !stores || !stores.length) return fail('month and stores required');
   deleteRowsByField('assigned_stores', 'month', month);
   const t = now();
-  stores.forEach(s => {
-    const id = getNextId('assigned_stores');
-    appendObj('assigned_stores', ['id', 'month', 'store_code', 'store_name', 'section', 'note', 'created_at'], {
-      id, month: parseInt(month),
-      store_code: s.code || s.store_code,
-      store_name: s.name || s.store_name,
-      section: s.section || '',
-      note: s.note || '',
-      created_at: t
-    });
-  });
-  return ok({ success: true, count: stores.length, month });
+  const s = getSheet('assigned_stores');
+  const lastRow = s.getLastRow();
+  let nextId = lastRow < 2 ? 1 : (parseInt(s.getRange(lastRow, 1).getValue()) || 0) + 1;
+  // 批次寫入：一次 setValues 取代逐列 appendRow，避免 GAS 執行逾時
+  const rows = stores.map(store => [
+    nextId++,
+    parseInt(month),
+    store.code || store.store_code || '',
+    store.name || store.store_name || '',
+    store.section || '',
+    store.note || '',
+    t
+  ]);
+  if (rows.length > 0) {
+    s.getRange(s.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+  }
+  return ok({ success: true, count: rows.length, month });
 }
 
 // ── 防重複 ──
