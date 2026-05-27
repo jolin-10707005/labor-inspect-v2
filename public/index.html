@@ -3241,10 +3241,10 @@ async function reloadMaintQuestions(){
     renderQuestionList();
     return;
   }
+  const qType=document.querySelector('input[name="q-store-type"]:checked')?.value||'RC';
   try{
-    const cats=await api(`/api/checklist?month=${qMaintMonth}`);
+    const cats=await api(`/api/checklist?month=${qMaintMonth}&store_type=${qType}`);
     maintMonthCats=cats||[];
-    // Also update inspection categories if month matches active month
     _clCache.RC=null;_clCache.FC=null;
   }catch(e){
     maintMonthCats=[];
