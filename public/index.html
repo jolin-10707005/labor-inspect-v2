@@ -1482,9 +1482,38 @@ function updateScore(){
 }
 
 // Flat list rendering with skip logic (條列式)
+// 偵測是否選了「查核結束」選項（例：0-2 他店集中提供本店不提供）
+function isInspectionEnded(){
+  if(!Array.isArray(categories))return false;
+  for(const cat of categories){
+    for(const q of (cat.questions||[])){
+      if(isDescQ(q))continue;
+      const ans=answers[q.id];if(!ans?.opt_id)continue;
+      const opt=(q.options||[]).find(o=>o.id===ans.opt_id);
+      if(opt&&opt.label&&opt.label.includes('查核結束'))return true;
+    }
+  }
+  return false;
+}
+
 function calcSkippedQIds(){
   const skipped=new Set();
   const skippedItemNos=new Set(); // 整個「項目N」要跳過
+
+  // 「查核結束」優先：選了「查核結束」→ 跳過該題之後的所有題目
+  const allRealQsForEnd=[...(categories||[])]
+    .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0))
+    .flatMap(c=>[...(c.questions||[])]
+      .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0))
+      .filter(q=>!isDescQ(q)));
+  const endIdx=allRealQsForEnd.findIndex(q=>{
+    const ans=answers[q.id];if(!ans?.opt_id)return false;
+    const opt=(q.options||[]).find(o=>o.id===ans.opt_id);
+    return opt&&opt.label&&opt.label.includes('查核結束');
+  });
+  if(endIdx>=0){
+    for(let i=endIdx+1;i<allRealQsForEnd.length;i++) skipped.add(allRealQsForEnd[i].id);
+  }
 
   categories.forEach(cat=>cat.questions.forEach(q=>{
     if(isDescQ(q)) return;
@@ -1564,6 +1593,16 @@ function renderAllQuestions(){
     </div>`;
   }).join('');
   document.getElementById('q-inner').innerHTML=html;
+  // 「查核結束」選項已選 → 隱藏紙本照片區（不需上傳紙本）
+  const paperCard=document.getElementById('paper-photo-card');
+  if(paperCard){
+    if(isInspectionEnded()){
+      paperCard.style.display='none';
+      paperCard.classList.remove('missing');
+    } else if(execStatus==='yes'){
+      paperCard.style.display='block';
+    }
+  }
   updateScore();
 }
 
@@ -1755,8 +1794,8 @@ async function submitInspection(){
   if(!execStatus){alert('請先選擇查核作業是否執行');return;}
   if(execStatus==='other'&&!document.getElementById('exec-other-txt').value.trim()){alert('請填寫其他原因');return;}
 
-  // Check paper photo required - 只有「有執行」才需要紙本照片
-  if(execStatus==='yes'&&!paperPhotoData){
+  // Check paper photo required - 只有「有執行」才需要紙本照片；「查核結束」選項已選 → 跳過此檢查
+  if(execStatus==='yes'&&!paperPhotoData&&!isInspectionEnded()){
     document.getElementById('paper-photo-card').classList.add('missing');
     document.getElementById('paper-photo-card').scrollIntoView({behavior:'smooth',block:'center'});
     alert('⚠ 請上傳紙本表格照片後才能送出');return;
@@ -3516,9 +3555,10 @@ function parseFCUpload(data){
   function s(v){return String(v==null?'':v).trim();}
   const catMap={},catOrder=[],catDesc={};
   let currentB='',currentC='',currentOptPrefix='',currentQ=null,compoundOpt=false;
+  let currentItemNo='0'; // 由 Excel A 欄繼承的項目編號（A 欄空白時沿用前一個）
 
-  function getOrCreateCat(b){
-    if(!catMap[b]){catMap[b]={name:b,item_no:'0',store_type:'FC',questions:[]};catOrder.push(b);}
+  function getOrCreateCat(b,itemNo){
+    if(!catMap[b]){catMap[b]={name:b,item_no:(itemNo!=null?String(itemNo):'0'),store_type:'FC',questions:[]};catOrder.push(b);}
     return catMap[b];
   }
   function pushQ(){
@@ -3529,17 +3569,20 @@ function parseFCUpload(data){
 
   for(let i=0;i<data.length;i++){
     const row=data[i];
-    const b=s(row[1]),c=s(row[2]),d=s(row[3]),e=s(row[4]);
+    const a=s(row[0]),b=s(row[1]),c=s(row[2]),d=s(row[3]),e=s(row[4]);
     const g=s(row[6]),h=s(row[7]);
+
+    // A 欄是數字 → 更新「目前的項目編號」；A 欄空白 → 沿用上一個（例如「資料準備」歸屬於 0）
+    if(a!==''&&/^\d+$/.test(a)) currentItemNo=a;
 
     // 跳過純標題列或全空列
     if(SKIP_VAL.includes(b)&&SKIP_VAL.includes(c)&&!e&&g!=='擇一') continue;
     if(!b&&!c&&!d&&!e&&g!=='擇一') continue;
 
-    // B 變動 → 切換大項
+    // B 變動 → 切換大項（item_no 取自當下的 currentItemNo）
     if(b&&!SKIP_VAL.includes(b)&&b!==currentB){
       pushQ(); currentB=b; currentC=''; currentOptPrefix='';
-      getOrCreateCat(b);
+      getOrCreateCat(b,currentItemNo);
     }
     if(!currentB) continue;
 
@@ -3594,19 +3637,7 @@ function parseFCUpload(data){
       cat.questions.unshift({content:DESC_PREFIX+catDesc[b],condition_note:'',options:[]});
   });
 
-  // item_no：以 "0-" 開頭或類別名含"資料提供"/"資料準備" → 0；其餘依序 1,2,3...
-  catOrder.forEach(b=>{
-    const cat=catMap[b];
-    const descQ=cat.questions.find(q=>isDescQ(q));
-    const descText=descQ?descQ.content.slice(DESC_PREFIX.length):'';
-    const firstRealQ=cat.questions.find(q=>!isDescQ(q));
-    const textToCheck=descText||(firstRealQ?firstRealQ.content:'')||b;
-    const isZero=textToCheck.match(/^0[-\s]/)||b.includes('資料提供')||b.includes('資料準備');
-    cat.item_no=isZero?'0':null;
-  });
-  let nonZeroIdx=1;
-  catOrder.forEach(b=>{if(catMap[b].item_no===null)catMap[b].item_no=String(nonZeroIdx++);});
-
+  // item_no 已在解析過程中由 Excel A 欄直接取得（資料準備 等沒有 A 欄編號的子類別會繼承前一個）
   return catOrder.map(b=>catMap[b]).filter(c=>c.questions.filter(q=>!isDescQ(q)).length>0);
 }
 
