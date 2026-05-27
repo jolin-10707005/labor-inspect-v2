@@ -619,7 +619,8 @@ function clearTestData() {
   });
 
   Logger.log('=== 清除結果 ===\n' + results.join('\n'));
-  SpreadsheetApp.getUi().alert('清除完成！\n\n' + results.join('\n'));
+  // 注意：若從 GAS 編輯器直接執行，請改查 Logs（Ctrl+Enter）確認結果
+  Logger.log('clearTestData 執行完畢：' + results.join('；'));
 }
 
 // ══════════════════════════════════════════════
@@ -651,7 +652,7 @@ function clearWrongMonthCategories() {
     if (parseInt(catData[i][monthCol]) === TARGET_MONTH) delCatIds.add(String(catData[i][idCol]));
   }
   if (delCatIds.size === 0) {
-    SpreadsheetApp.getUi().alert(`${TARGET_SHEET} 中找不到 ${TARGET_MONTH} 月資料，無需清除`);
+    Logger.log(`${TARGET_SHEET} 中找不到 ${TARGET_MONTH} 月資料，無需清除`);
     return;
   }
 
@@ -692,7 +693,7 @@ function clearWrongMonthCategories() {
   }
 
   SpreadsheetApp.flush();
-  const msg = `清除完成！\n活頁：${TARGET_SHEET}\n月份：${TARGET_MONTH} 月\n\n類別：${delCat} 筆\n題目：${delQ} 筆\n選項：${delOpt} 筆`;
+  const msg = `清除完成！活頁：${TARGET_SHEET} / 月份：${TARGET_MONTH} 月 / 類別：${delCat} 筆 / 題目：${delQ} 筆 / 選項：${delOpt} 筆`;
   Logger.log(msg);
-  SpreadsheetApp.getUi().alert(msg);
+  // 結果請至 GAS 編輯器「查看 > 記錄」（或按 Ctrl+Enter）確認
 }
