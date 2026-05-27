@@ -683,12 +683,12 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px" id="q-month-btns"></div>
         <!-- 店型格式選擇 -->
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <label style="flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r2);cursor:pointer;background:#fff;font-size:13px;font-weight:600;transition:.15s" id="q-type-rc-lbl">
-            <input type="radio" name="q-store-type" value="RC" id="q-type-rc" checked onchange="onQTypeChange()" style="accent-color:var(--teal-dark)">
+          <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 10px;border:2px solid var(--teal-dark);border-radius:var(--r2);cursor:pointer;background:var(--teal-dark);color:#fff;font-size:13px;font-weight:700;transition:.15s;user-select:none" id="q-type-rc-lbl">
+            <input type="radio" name="q-store-type" value="RC" id="q-type-rc" checked onchange="onQTypeChange()" style="display:none">
             🏪 直營店（RC）格式
           </label>
-          <label style="flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r2);cursor:pointer;background:#fff;font-size:13px;font-weight:600;transition:.15s" id="q-type-fc-lbl">
-            <input type="radio" name="q-store-type" value="FC" id="q-type-fc" onchange="onQTypeChange()" style="accent-color:var(--teal-dark)">
+          <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 10px;border:2px solid var(--border);border-radius:var(--r2);cursor:pointer;background:#fff;color:var(--text2);font-size:13px;font-weight:700;transition:.15s;user-select:none" id="q-type-fc-lbl">
+            <input type="radio" name="q-store-type" value="FC" id="q-type-fc" onchange="onQTypeChange()" style="display:none">
             🤝 加盟店（FC）格式
           </label>
         </div>
@@ -3528,10 +3528,14 @@ async function resetStoreTypeQuestions(type){
 
 function onQTypeChange(){
   const type=document.querySelector('input[name="q-store-type"]:checked')?.value||'RC';
-  ['q-type-rc-lbl','q-type-fc-lbl'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el)el.style.background=(el.id===`q-type-${type.toLowerCase()}-lbl`)?'var(--teal-pale)':'#fff';
+  [['q-type-rc-lbl','RC'],['q-type-fc-lbl','FC']].forEach(([id,val])=>{
+    const el=document.getElementById(id);if(!el)return;
+    const sel=(val===type);
+    el.style.background=sel?'var(--teal-dark)':'#fff';
+    el.style.color=sel?'#fff':'var(--text2)';
+    el.style.borderColor=sel?'var(--teal-dark)':'var(--border)';
   });
+  reloadMaintQuestions();
 }
 
 // ── FC Excel 解析（加盟店 G 欄 "擇一" 驅動，每個 merge 群組 = 一題）──
