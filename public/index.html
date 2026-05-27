@@ -3476,7 +3476,14 @@ function onQTypeChange(){
 // D 規則：含"/"或以"資料無法"/"自製版本"/"全數員工"/"部分員工"開頭 → 選項前綴(compound)
 //          否則 → condition_note（問題辨識符，如"勳工名冊","國定假日"）
 function parseFCUpload(data){
-  const SKIP_VAL=['','項目','查核內容','勾選','參數','內容','●加盟店檢核項目'];
+  // 相容新版格式（1150521 系統版）：第一欄為空白整體右移 1 欄 → 自動偵測並裁掉前置空欄
+  let hasColA=false;
+  for(let i=0;i<Math.min(data.length,30);i++){
+    const r=data[i];if(!r)continue;
+    if(r[0]!=null&&String(r[0]).trim()!==''){hasColA=true;break;}
+  }
+  if(!hasColA) data=data.map(r=>Array.isArray(r)?r.slice(1):r);
+  const SKIP_VAL=['','項目','查核內容','勾選','參數','內容','●加盟店檢核項目','●加盟店檢核項目(紙本檢視版)'];
   function isOptPrefix(d){
     return d.includes('/')||d.startsWith('資料無法')||d.startsWith('自製版本')||
            d.startsWith('全數員工')||d.startsWith('部分員工');
