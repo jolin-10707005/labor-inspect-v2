@@ -45,11 +45,11 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
 
 /* APP */
 #app{display:none;flex-direction:column;min-height:100vh}
-.header{background:var(--teal-dark);padding:0 16px;height:54px;display:flex;align-items:center;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-.h-logo{display:flex;align-items:center;gap:8px;flex:1}
-.h-logo .icon{font-size:24px}
-.h-logo h1{color:#fff;font-size:17px;font-weight:700}
-.h-actions{display:flex;gap:8px}
+.header{background:var(--teal-dark);padding:8px 16px;min-height:54px;display:flex;align-items:center;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.h-logo{display:flex;align-items:center;gap:8px;flex:1;min-width:0;overflow:hidden}
+.h-logo .icon{font-size:24px;flex-shrink:0}
+.h-logo h1{color:#fff;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h-actions{display:flex;gap:6px;flex-shrink:0}
 .btn-hdr{padding:6px 12px;border-radius:6px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:.15s}
 .btn-maint{background:#1a3a5c;color:#fff;display:flex;align-items:center;gap:4px}
 .btn-maint .badge{background:#f39c12;color:#fff;font-size:11px;padding:1px 6px;border-radius:4px;font-weight:700}
@@ -315,7 +315,7 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 /* iOS safe-area */
 @supports(padding:max(0px)){
   body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
-  .header{padding-top:max(8px,env(safe-area-inset-top))}
+  .header{padding-top:max(8px,env(safe-area-inset-top));padding-bottom:8px}
 }
 </style>
 </head>
