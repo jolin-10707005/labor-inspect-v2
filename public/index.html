@@ -305,7 +305,7 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
 .loading-box{background:#fff;padding:24px 36px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.2);text-align:center;min-width:240px}
 .loading-spin{width:48px;height:48px;border:4px solid #e6f4f1;border-top:4px solid #1d6f6f;border-radius:50%;animation:lspin 0.9s linear infinite;margin:0 auto 12px}
 @keyframes lspin{to{transform:rotate(360deg)}}
-.loading-text{font-size:15px;color:#1d6f6f;font-weight:700}
+.loading-text{font-size:15px;color:#1d6f6f;font-weight:700;white-space:pre-line;line-height:1.5}
 .loading-bar{width:100%;height:6px;background:#e6f4f1;border-radius:3px;margin-top:10px;overflow:hidden}
 .loading-bar-fill{height:100%;background:linear-gradient(90deg,#1d6f6f,#4fb3a0);width:30%;animation:lbar 1.2s ease-in-out infinite}
 @keyframes lbar{0%{margin-left:-30%}100%{margin-left:100%}}
@@ -929,14 +929,28 @@ function togglePwEye(){
 }
 function escHtml(s){const d=document.createElement('div');d.appendChild(document.createTextNode(String(s||'')));return d.innerHTML;}
 // ─── Loading overlay 控制 ───
-function showLoading(text){
+function showLoading(text,pct){
   const ovl=document.getElementById('loading-ovl');
   const t=document.getElementById('loading-text');
+  const f=document.querySelector('.loading-bar-fill');
   if(t)t.textContent=text||'處理中…';
+  if(f){
+    if(typeof pct==='number'){
+      // 確定進度模式：停掉動畫，依百分比設寬度
+      f.style.animation='none';
+      f.style.width=Math.max(0,Math.min(100,pct))+'%';
+    }else{
+      // 不定進度模式：恢復動畫
+      f.style.animation='';
+      f.style.width='30%';
+    }
+  }
   if(ovl)ovl.classList.add('show');
 }
 function hideLoading(){
   const ovl=document.getElementById('loading-ovl');
+  const f=document.querySelector('.loading-bar-fill');
+  if(f){f.style.animation='';f.style.width='30%';}
   if(ovl)ovl.classList.remove('show');
 }
 
@@ -3021,17 +3035,28 @@ async function handleAssignedUpload(e){
       if(!stores.length){alert('沒有有效資料');return;}
       // 分批送出（每批 20 筆，確保 payload < 1500 字，走 d 參數避免 GAS 302 遺失）
       const CHUNK=20;
-      for(let ci=0;ci<stores.length;ci+=CHUNK){
-        const chunk=stores.slice(ci,ci+CHUNK);
-        await api('/api/assigned-stores','POST',{month:currentAssignedMonth,stores:chunk,replace:ci===0});
-      }
-      await renderAssignedStores();
-      if(selectedInspector){
-        completedStores=new Set();
-        await loadCalendarStores();
-      }
+      const total=stores.length;
+      const totalBatches=Math.ceil(total/CHUNK);
+      showLoading(`匯入應查名單中… 0/${total}`,0);
+      try{
+        let done=0,batchIdx=0;
+        for(let ci=0;ci<stores.length;ci+=CHUNK){
+          const chunk=stores.slice(ci,ci+CHUNK);
+          batchIdx++;
+          await api('/api/assigned-stores','POST',{month:currentAssignedMonth,stores:chunk,replace:ci===0});
+          done=Math.min(ci+CHUNK,total);
+          const pct=Math.round(done/total*100);
+          showLoading(`匯入應查名單中… ${done}/${total}（第 ${batchIdx}/${totalBatches} 批）`,pct);
+        }
+        showLoading('刷新名單中…');
+        await renderAssignedStores();
+        if(selectedInspector){
+          completedStores=new Set();
+          await loadCalendarStores();
+        }
+      }finally{ hideLoading(); }
       alert(`✅ ${currentAssignedMonth}月應查名單已更新（共${stores.length}間，後蓋前）`);
-    }catch(err){alert('匯入失敗：'+err.message);}
+    }catch(err){hideLoading();alert('匯入失敗：'+err.message);}
   };
   reader.readAsBinaryString(file);
   e.target.value='';
@@ -3644,10 +3669,16 @@ function handleQuestionUpload(e){
       const totalOpt=catList.reduce((s,c)=>s+c.questions.filter(q=>!isDescQ(q)).reduce((ss,q)=>ss+q.options.length,0),0);
       const typeLabel=storeType==='FC'?'加盟店（FC）':'直營店（RC）';
       if(!confirm(`即將匯入 ${month}月 ${typeLabel} 點檢題目：\n${catList.length} 個類別 · ${totalQ} 題 · ${totalOpt} 個選項\n\n⚠ 此操作將完全取代 ${month}月 ${typeLabel} 現有題目，確定繼續？`)){e.target.value='';return;}
-      const result=await api('/api/questions/import-month','POST',{month,store_type:storeType,categories:catList});
+      showLoading(`匯入 ${month}月 ${typeLabel} 題目中…\n${catList.length} 類別 · ${totalQ} 題 · ${totalOpt} 個選項`);
+      let result;
+      try{
+        result=await api('/api/questions/import-month','POST',{month,store_type:storeType,categories:catList});
+        showLoading('刷新題目中…');
+        await reloadMaintQuestions();
+      }finally{ hideLoading(); }
       alert(`✅ ${month}月 ${typeLabel} 題目已成功匯入！\n${result.categories} 類別 · ${result.questions} 題 · ${result.options} 個選項`);
-      await reloadMaintQuestions();
     }catch(err){
+      hideLoading();
       alert('匯入失敗：'+err.message);
     }
     e.target.value='';
