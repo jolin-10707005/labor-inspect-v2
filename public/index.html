@@ -3594,27 +3594,37 @@ function parseFCUpload(data){
     if(c&&!SKIP_VAL.includes(c)) currentC=c;
 
     // G="擇一" → 新題目觸發
+    // 例外：若題目內容與目前題目相同且 D 是選項前綴 → 同一題繼續，只換前綴（避免「工資清冊」7選項被拆成兩題）
     if(g==='擇一'){
-      pushQ();
       const qContent=currentC||'';
-      if(d&&!SKIP_VAL.includes(d)&&!isOptPrefix(d)){
-        // D 為 condition_note；0-3 類（C 以 "0-3" 開頭）題目名稱合併為 "C-D"
-        const qDisp=qContent.startsWith('0-3')?`${qContent}-${d}`:qContent;
-        currentQ={content:qDisp,condition_note:d,options:[]};
-        compoundOpt=false;
-      } else if(d&&!SKIP_VAL.includes(d)){
-        // D 為選項前綴（如 資料無法判斷、紙本/系統公版）→ compound 模式
-        currentQ={content:qContent,condition_note:'',options:[]};
+      const sameQ=currentQ&&currentQ.content===qContent&&d&&!SKIP_VAL.includes(d)&&isOptPrefix(d);
+      if(sameQ){
+        // 同一題：切換 compound 前綴，繼續加選項
         compoundOpt=true; currentOptPrefix=d;
+        if(e&&!SKIP_VAL.includes(e)){
+          currentQ.options.push({param_code:(h&&/^\d+$/.test(h))?h:'',label:`${currentOptPrefix}-${e}`,is_violation:0});
+        }
       } else {
-        // D 空 → 簡單題，選項直接來自 E
-        currentQ={content:qContent,condition_note:'',options:[]};
-        compoundOpt=false; currentOptPrefix='';
-      }
-      // 觸發列本身若有 E 即加入第一個選項
-      if(e&&!SKIP_VAL.includes(e)){
-        const label=compoundOpt&&currentOptPrefix?`${currentOptPrefix}-${e}`:e;
-        currentQ.options.push({param_code:(h&&/^\d+$/.test(h))?h:'',label,is_violation:0});
+        pushQ();
+        if(d&&!SKIP_VAL.includes(d)&&!isOptPrefix(d)){
+          // D 為 condition_note；0-3 類（C 以 "0-3" 開頭）題目名稱合併為 "C-D"
+          const qDisp=qContent.startsWith('0-3')?`${qContent}-${d}`:qContent;
+          currentQ={content:qDisp,condition_note:d,options:[]};
+          compoundOpt=false;
+        } else if(d&&!SKIP_VAL.includes(d)){
+          // D 為選項前綴（如 資料無法判斷、紙本/系統公版）→ compound 模式
+          currentQ={content:qContent,condition_note:'',options:[]};
+          compoundOpt=true; currentOptPrefix=d;
+        } else {
+          // D 空 → 簡單題，選項直接來自 E
+          currentQ={content:qContent,condition_note:'',options:[]};
+          compoundOpt=false; currentOptPrefix='';
+        }
+        // 觸發列本身若有 E 即加入第一個選項
+        if(e&&!SKIP_VAL.includes(e)){
+          const label=compoundOpt&&currentOptPrefix?`${currentOptPrefix}-${e}`:e;
+          currentQ.options.push({param_code:(h&&/^\d+$/.test(h))?h:'',label,is_violation:0});
+        }
       }
       continue;
     }
