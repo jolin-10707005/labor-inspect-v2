@@ -590,3 +590,34 @@ function fixSkipItems() {
 
   Logger.log(`完成，共修正 ${fixed} 筆跳題邏輯`);
 }
+
+// ══════════════════════════════════════════════
+// 一鍵清除測試資料
+// 執行方式：在 GAS 編輯器中執行 clearTestData()
+// 清除範圍：inspections、inspection_answers、audit_log
+// 保留：標題列 + 其他設定表（users/stores/questions 等）
+// ══════════════════════════════════════════════
+
+function clearTestData() {
+  const TARGETS = ['inspections', 'inspection_answers', 'audit_log'];
+  const results = [];
+
+  TARGETS.forEach(name => {
+    const sheet = getSheet(name);
+    if (!sheet) {
+      results.push(`⚠ 找不到工作表：${name}`);
+      return;
+    }
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      results.push(`✅ ${name}：已是空的，無需清除`);
+      return;
+    }
+    const deleteCount = lastRow - 1;          // 保留第 1 行標題
+    sheet.deleteRows(2, deleteCount);
+    results.push(`🗑 ${name}：已刪除 ${deleteCount} 筆資料`);
+  });
+
+  Logger.log('=== 清除結果 ===\n' + results.join('\n'));
+  SpreadsheetApp.getUi().alert('清除完成！\n\n' + results.join('\n'));
+}
