@@ -3019,7 +3019,12 @@ async function handleAssignedUpload(e){
         if(code&&name)stores.push({code,name,section,note});
       });
       if(!stores.length){alert('沒有有效資料');return;}
-      const result=await api('/api/assigned-stores','POST',{month:currentAssignedMonth,stores});
+      // 分批送出（每批 20 筆，確保 payload < 1500 字，走 d 參數避免 GAS 302 遺失）
+      const CHUNK=20;
+      for(let ci=0;ci<stores.length;ci+=CHUNK){
+        const chunk=stores.slice(ci,ci+CHUNK);
+        await api('/api/assigned-stores','POST',{month:currentAssignedMonth,stores:chunk,replace:ci===0});
+      }
       await renderAssignedStores();
       if(selectedInspector){
         completedStores=new Set();

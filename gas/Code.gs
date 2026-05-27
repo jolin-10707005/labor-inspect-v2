@@ -627,9 +627,9 @@ function handleGetAssigned(params) {
   return ok(list);
 }
 function handleSetAssigned(body) {
-  const { month, stores } = body;
+  const { month, stores, replace } = body;
   if (!month || !stores || !stores.length) return fail('month and stores required');
-  deleteRowsByField('assigned_stores', 'month', month);
+  if (replace !== false) deleteRowsByField('assigned_stores', 'month', month);
   const t = now();
   const s = getSheet('assigned_stores');
   const lastRow = s.getLastRow();
