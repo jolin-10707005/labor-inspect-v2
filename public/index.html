@@ -499,7 +499,8 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
       <!-- 查核作業是否執行 -->
       <div class="exec-card">
         <div class="exec-title">📋 查核作業是否執行<span class="req">*</span></div>
-        <div class="exec-opts" id="exec-opts">
+        <!-- RC 選項 -->
+        <div class="exec-opts" id="exec-opts-rc">
           <button class="exec-opt" onclick="selectExec('yes',this)">
             <span class="e-radio"></span><span>有執行（請繼續填寫表單）</span>
           </button>
@@ -513,6 +514,15 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
             <span class="e-radio"></span><span>其他：</span>
             <input type="text" class="exec-other-inp" id="exec-other-txt" placeholder="請說明原因"
               onclick="event.stopPropagation()" style="display:none;flex:1">
+          </button>
+        </div>
+        <!-- FC 選項 -->
+        <div class="exec-opts" id="exec-opts-fc" style="display:none">
+          <button class="exec-opt" onclick="selectExec('yes',this)">
+            <span class="e-radio"></span><span>有執行（請繼續填寫表單）</span>
+          </button>
+          <button class="exec-opt" onclick="selectExec('no-transfer',this)">
+            <span class="e-radio"></span><span>轉換店未執行</span>
           </button>
         </div>
       </div>
@@ -1435,15 +1445,15 @@ function goToInspect(){
   document.getElementById('paper-photo-preview').innerHTML='';
   document.getElementById('paper-photo-card').classList.remove('missing');
 
-  // FC 加盟店：隱藏「查核作業是否執行」，自動設為有執行，直接顯示題目
-  const execCard=document.querySelector('.exec-card');
+  // 依店型切換「查核作業是否執行」選項組
+  const rcOpts=document.getElementById('exec-opts-rc');
+  const fcOpts=document.getElementById('exec-opts-fc');
   if(currentStoreType==='FC'){
-    if(execCard)execCard.style.display='none';
-    execStatus='yes';
-    document.getElementById('questions-area').classList.remove('hidden');
-    renderAllQuestions();
+    if(rcOpts)rcOpts.style.display='none';
+    if(fcOpts)fcOpts.style.display='';
   } else {
-    if(execCard)execCard.style.display='';
+    if(rcOpts)rcOpts.style.display='';
+    if(fcOpts)fcOpts.style.display='none';
   }
 
   updateScore();switchTab('inspect');
