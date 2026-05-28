@@ -684,12 +684,12 @@ function handleGetInspections(params) {
 
 function handleCreateInspection(body, user) {
   ensureAnswersNoteColumn(); // 確保 note 欄位存在
-  const { store_code, store_name, store_type, audit_date, audit_time, inspector_name, section, exec_status, exec_other, has_violation, paper_photo, answers } = body;
+  const { store_code, store_name, store_type, audit_date, audit_time, inspector_name, section, exec_status, exec_other, has_violation, paper_photo, main_store_name, answers } = body;
   const id = getNextId('inspections');
   const t = now();
   appendObj('inspections',
-    ['id', 'store_code', 'store_name', 'store_type', 'audit_date', 'audit_time', 'inspector_name', 'section', 'exec_status', 'exec_other', 'has_violation', 'paper_photo', 'auditor_id', 'created_at'],
-    { id, store_code, store_name, store_type: store_type || 'RC', audit_date, audit_time: audit_time || '', inspector_name, section: section || '', exec_status, exec_other: exec_other || '', has_violation: has_violation ? 1 : 0, paper_photo: paper_photo || '', auditor_id: user.id, created_at: t }
+    ['id', 'store_code', 'store_name', 'store_type', 'audit_date', 'audit_time', 'inspector_name', 'section', 'exec_status', 'exec_other', 'has_violation', 'paper_photo', 'main_store_name', 'auditor_id', 'created_at'],
+    { id, store_code, store_name, store_type: store_type || 'RC', audit_date, audit_time: audit_time || '', inspector_name, section: section || '', exec_status, exec_other: exec_other || '', has_violation: has_violation ? 1 : 0, paper_photo: paper_photo || '', main_store_name: main_store_name || '', auditor_id: user.id, created_at: t }
   );
   if (answers && answers.length > 0) {
     answers.forEach(a => {

@@ -532,6 +532,14 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
         <div id="q-inner"></div>
       </div>
 
+      <!-- 主店店名（0-2 選「他店集中/查核結束」時顯示）-->
+      <div id="main-store-card" style="display:none;background:#fff;border:2px solid var(--teal);border-radius:var(--r);padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:700;color:var(--teal-dark);margin-bottom:10px">🏪 提供資料的主店店名 <span class="req">*</span></div>
+        <input type="text" id="main-store-inp" placeholder="請填寫提供資料的主店店名"
+          style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:14px;font-family:inherit;box-sizing:border-box"
+          oninput="mainStoreName=this.value.trim()">
+      </div>
+
       <!-- 紙本表格照片上傳 -->
       <div class="paper-photo-card" id="paper-photo-card" style="display:none">
         <div class="paper-photo-title">📄 紙本表格照片上傳 <span class="req">*</span>
@@ -829,7 +837,7 @@ const STORES_MASTER=window.DATA_STORES_MASTER||{};
 
 // STATE
 let categories=[],apiStores=[];
-let execStatus=null;
+let execStatus=null,mainStoreName='';
 const DESC_PREFIX='[說明]'; // FC 說明段落偽題目的前綴
 function isDescQ(q){return !!(q&&q.content&&q.content.startsWith(DESC_PREFIX));}
 let selectedStore=null,selectedInspector=null,inspectorId=null;
@@ -1437,13 +1445,15 @@ function goToInspect(){
   console.log('[goToInspect] categories='+categories?.length+' currentStoreType='+currentStoreType+' lockedStoreType='+lockedStoreType);
   document.getElementById('ih-code').textContent=selectedStore.code;
   document.getElementById('ih-name').textContent=selectedStore.name;
-  initAnswers();execStatus=null;
+  initAnswers();execStatus=null;mainStoreName='';
   document.querySelectorAll('.exec-opt').forEach(b=>b.classList.remove('yes-sel','no-sel'));
   document.getElementById('exec-other-txt').style.display='none';
   document.getElementById('questions-area').classList.add('hidden');
   document.getElementById('paper-photo-card').style.display='none';
   document.getElementById('paper-photo-preview').innerHTML='';
   document.getElementById('paper-photo-card').classList.remove('missing');
+  const _msc=document.getElementById('main-store-card');if(_msc)_msc.style.display='none';
+  const _msi=document.getElementById('main-store-inp');if(_msi)_msi.value='';
 
   // 依店型切換「查核作業是否執行」選項組
   const rcOpts=document.getElementById('exec-opts-rc');
@@ -1505,6 +1515,19 @@ function updateScore(){
 
 // Flat list rendering with skip logic (條列式)
 // 偵測是否選了「查核結束」選項（例：0-2 他店集中提供本店不提供）
+// 偵測是否選了「他店集中提供本店不提供(查核結束)」的 0-2 特殊選項
+function isOtherStoreCollect(){
+  if(!Array.isArray(categories))return false;
+  for(const cat of categories){
+    for(const q of (cat.questions||[])){
+      if(isDescQ(q))continue;
+      const ans=answers[q.id];if(!ans?.opt_id)continue;
+      const opt=(q.options||[]).find(o=>o.id===ans.opt_id);
+      if(opt&&opt.label&&opt.label.includes('他店集中')&&opt.label.includes('查核結束'))return true;
+    }
+  }
+  return false;
+}
 function isInspectionEnded(){
   if(!Array.isArray(categories))return false;
   for(const cat of categories){
@@ -1615,16 +1638,15 @@ function renderAllQuestions(){
     </div>`;
   }).join('');
   document.getElementById('q-inner').innerHTML=html;
-  // 「查核結束」選項已選 → 隱藏紙本照片區（不需上傳紙本）
+  // 有執行一律顯示紙本照片區
   const paperCard=document.getElementById('paper-photo-card');
   if(paperCard){
-    if(isInspectionEnded()){
-      paperCard.style.display='none';
-      paperCard.classList.remove('missing');
-    } else if(execStatus==='yes'){
-      paperCard.style.display='block';
-    }
+    paperCard.style.display=execStatus==='yes'?'block':'none';
+    if(execStatus!=='yes')paperCard.classList.remove('missing');
   }
+  // 主店店名 card：選了「他店集中/查核結束」才顯示
+  const mainStoreCard=document.getElementById('main-store-card');
+  if(mainStoreCard) mainStoreCard.style.display=isOtherStoreCollect()?'block':'none';
   updateScore();
 }
 
@@ -1816,8 +1838,15 @@ async function submitInspection(){
   if(!execStatus){alert('請先選擇查核作業是否執行');return;}
   if(execStatus==='other'&&!document.getElementById('exec-other-txt').value.trim()){alert('請填寫其他原因');return;}
 
-  // Check paper photo required - 只有「有執行」才需要紙本照片；「查核結束」選項已選 → 跳過此檢查
-  if(execStatus==='yes'&&!paperPhotoData&&!isInspectionEnded()){
+  // 主店店名必填（0-2 他店集中查核結束）
+  if(isOtherStoreCollect()&&!mainStoreName){
+    const inp=document.getElementById('main-store-inp');
+    if(inp){inp.style.borderColor='var(--red)';inp.focus();}
+    document.getElementById('main-store-card').scrollIntoView({behavior:'smooth',block:'center'});
+    alert('⚠ 請填寫提供資料的主店店名');return;
+  }
+  // Check paper photo required - 只要有執行都需要紙本照片
+  if(execStatus==='yes'&&!paperPhotoData){
     document.getElementById('paper-photo-card').classList.add('missing');
     document.getElementById('paper-photo-card').scrollIntoView({behavior:'smooth',block:'center'});
     alert('⚠ 請上傳紙本表格照片後才能送出');return;
@@ -1912,6 +1941,7 @@ async function submitInspection(){
     section:document.getElementById('sel-section').value||'',
     exec_status:execStatus,
     exec_other:document.getElementById('exec-other-txt').value||'',
+    main_store_name:mainStoreName||'',
     has_violation:execStatus==='yes'&&Object.values(answers).some(a=>a.is_vio)?1:0,
     paper_photo:'', // set below after compression
     // note 格式：「原因文字|||photoUrl1|||photoUrl2」（|||分隔，方便匯出時解析）
@@ -2522,32 +2552,33 @@ function buildFCRow(r, fcAns){
     fcExecLabel[r.exec_status]||r.exec_status||'', // G 查核作業是否有執行
     getVal('','0-1',''),                           // H 0-1 單店/複數店
     getVal('','0-2',''),                           // I 0-2 複數店資料提供方式
-    get03('名冊'),                                 // J 0-3 勳/勞工名冊
-    get03('保明細'),                               // K 0-3 勳/勞保明細
-    get03('工資清冊'),                             // L 0-3 工資清冊
-    get03('出勤紀錄'),                             // M 0-3 出勤紀錄
-    anyMain('名冊',''),                            // N  1 有勳/勞工名冊
-    anyNote('名冊',''),                            // O  1 無法判斷-原因
-    anyPhoto('名冊',''),                           // P  1 無法判斷-照片
-    anyMain('保明細',''),                          // Q  2 勳/勞工保險
-    anyNote('保明細',''),                          // R  2 無法判斷-原因
-    anyPhoto('保明細',''),                         // S  2 無法判斷-照片
-    anyMain('工資清冊',''),                        // T  3 有工資清冊
-    anyNote('工資清冊',''),                        // U  3 無法判斷-原因
-    anyPhoto('工資清冊',''),                       // V  3 無法判斷-照片
-    anyMain('出勤紀錄',''),                        // W  4 有出勤紀錄
-    anyNote('出勤紀錄',''),                        // X  4 無法判斷-原因
-    anyPhoto('出勤紀錄',''),                       // Y  4 無法判斷-照片
-    getOvertime('國定假日'),                       // Z  5 國定假日
-    getOverNote('國定假日'),                       // AA 5 國定假日-原因
-    getPhoto('加班','國定假日'),                   // AB 5 國定假日-照片
-    getOvertime('休息日加班'),                     // AC 5 休息日加班
-    getOverNote('休息日加班'),                     // AD 5 休息日-原因
-    getPhoto('加班','休息日加班'),                 // AE 5 休息日-照片
-    getOvertime('平日加班'),                       // AF 5 平日加班
-    getOverNote('平日加班'),                       // AG 5 平日加班-原因
-    getPhoto('加班','平日加班'),                   // AH 5 平日加班-照片
-    r.paper_photo&&r.paper_photo.startsWith('http')?r.paper_photo:''  // AI (col 34) 完成照片
+    r.main_store_name||'',                         // J 提供資料的主店店名
+    get03('名冊'),                                 // K 0-3 勳/勞工名冊
+    get03('保明細'),                               // L 0-3 勳/勞保明細
+    get03('工資清冊'),                             // M 0-3 工資清冊
+    get03('出勤紀錄'),                             // N 0-3 出勤紀錄
+    anyMain('名冊',''),                            // O  1 有勳/勞工名冊
+    anyNote('名冊',''),                            // P  1 無法判斷-原因
+    anyPhoto('名冊',''),                           // Q  1 無法判斷-照片 (col 16)
+    anyMain('保明細',''),                          // R  2 勳/勞工保險
+    anyNote('保明細',''),                          // S  2 無法判斷-原因
+    anyPhoto('保明細',''),                         // T  2 無法判斷-照片 (col 19)
+    anyMain('工資清冊',''),                        // U  3 有工資清冊
+    anyNote('工資清冊',''),                        // V  3 無法判斷-原因
+    anyPhoto('工資清冊',''),                       // W  3 無法判斷-照片 (col 22)
+    anyMain('出勤紀錄',''),                        // X  4 有出勤紀錄
+    anyNote('出勤紀錄',''),                        // Y  4 無法判斷-原因
+    anyPhoto('出勤紀錄',''),                       // Z  4 無法判斷-照片 (col 25)
+    getOvertime('國定假日'),                       // AA 5 國定假日
+    getOverNote('國定假日'),                       // AB 5 國定假日-原因
+    getPhoto('加班','國定假日'),                   // AC 5 國定假日-照片 (col 28)
+    getOvertime('休息日加班'),                     // AD 5 休息日加班
+    getOverNote('休息日加班'),                     // AE 5 休息日-原因
+    getPhoto('加班','休息日加班'),                 // AF 5 休息日-照片 (col 31)
+    getOvertime('平日加班'),                       // AG 5 平日加班
+    getOverNote('平日加班'),                       // AH 5 平日加班-原因
+    getPhoto('加班','平日加班'),                   // AI 5 平日加班-照片 (col 34)
+    r.paper_photo&&r.paper_photo.startsWith('http')?r.paper_photo:''  // AJ (col 35) 完成照片
   ];
 }
 
@@ -2636,16 +2667,17 @@ async function fetchAllDetails(execOnly=false){
 const FC_HEADERS=['上傳時間','店號','店名','點檢日期','點檢人員','點檢人員課別',  // A-F (0-5)
   '查核作業是否有執行',                                                      // G (6)
   '0-1 單店/複數店','0-2 複數店資料提供方式(無複數店無須填寫)',               // H-I (7-8)
-  '0-3各店資料準備/勞工名冊或員工資料表','0-3各店資料準備/勞保明細',           // J-K (9-10)
-  '0-3各店資料準備/工資清冊或個人薪資單','0-3各店資料準備/出勤紀錄或個人工時表', // L-M (11-12)
-  '1有勞工名冊或員工資料表','1現場無法判斷-原因','1現場無法判斷-照片',         // N-O-P (13-15)
-  '2勞工保險開辦及加保狀況','2現場無法判斷-原因','2現場無法判斷-照片',         // Q-R-S (16-18)
-  '3有工資清冊或員工薪資單','3現場無法判斷-原因','3現場無法判斷-照片',         // T-U-V (19-21)
-  '4有出勤紀錄或個人工時表','4現場無法判斷-原因','4現場無法判斷-照片',         // W-X-Y (22-24)
-  '5國定假日(確認原因欄位判斷)','5國定假日-無法判斷原因','5國定假日-無法判斷照片', // Z-AA-AB (25-27)
-  '5休息日加班','5休息日-無法判斷原因','5休息日-無法判斷照片',               // AC-AD-AE (28-30)
-  '5平日加班(每日出勤>8H)','5平日加班-無法判斷原因','5平日加班-無法判斷照片',   // AF-AG-AH (31-33)
-  '店鋪勞動檢查點檢表完成照片'];                                            // AI (34)
+  '提供資料的主店店名',                                                      // J (9)
+  '0-3各店資料準備/勞工名冊或員工資料表','0-3各店資料準備/勞保明細',           // K-L (10-11)
+  '0-3各店資料準備/工資清冊或個人薪資單','0-3各店資料準備/出勤紀錄或個人工時表', // M-N (12-13)
+  '1有勞工名冊或員工資料表','1現場無法判斷-原因','1現場無法判斷-照片',         // O-P-Q (14-16)
+  '2勞工保險開辦及加保狀況','2現場無法判斷-原因','2現場無法判斷-照片',         // R-S-T (17-19)
+  '3有工資清冊或員工薪資單','3現場無法判斷-原因','3現場無法判斷-照片',         // U-V-W (20-22)
+  '4有出勤紀錄或個人工時表','4現場無法判斷-原因','4現場無法判斷-照片',         // X-Y-Z (23-25)
+  '5國定假日(確認原因欄位判斷)','5國定假日-無法判斷原因','5國定假日-無法判斷照片', // AA-AB-AC (26-28)
+  '5休息日加班','5休息日-無法判斷原因','5休息日-無法判斷照片',               // AD-AE-AF (29-31)
+  '5平日加班(每日出勤>8H)','5平日加班-無法判斷原因','5平日加班-無法判斷照片',   // AG-AH-AI (32-34)
+  '店鋪勞動檢查點檢表完成照片'];                                            // AJ (35)
 const RC_HEADERS=['上傳時間','店號','店名','點檢日期','點檢人員','點檢人員課別','查核作業是否執行',
   '資料準備- 班表準備','資料準備-  出勤紀錄準備',
   '預排班表並且公告有同仁 ','簽到退落實度 ',
@@ -2667,7 +2699,7 @@ async function exportWeekly(){
   // RC 照片欄：col15=紀錄照片, col18=完成照片
   const RC_PHOTO_COLS=[15,18];
   // FC 照片欄：各項無法判斷照片 + 完成照片
-  const FC_PHOTO_COLS=[15,18,21,24,27,30,33,34];
+  const FC_PHOTO_COLS=[16,19,22,25,28,31,34,35];
 
   // ── 直營店 RC sheet ──
   if(rcDetails.length){
@@ -2741,7 +2773,7 @@ async function exportPayClient(){
   // 加盟店明細
   if(fcDet.length){
     const ws3=XLSX.utils.aoa_to_sheet([FC_HEADERS,...fcDet.map(({r,fcAns})=>buildFCRow(r,fcAns))]);
-    setSheetPhotoLinks(ws3,fcDet.length,[15,18,21,24,27,30,33,34]);
+    setSheetPhotoLinks(ws3,fcDet.length,[16,19,22,25,28,31,34,35]);
     XLSX.utils.book_append_sheet(wb,ws3,'請款店明細(加盟)');
   }
   XLSX.writeFile(wb,`全家勞動檢查-請款金額-客戶_${toROC(start)}-${toROC(end)}.xlsx`);
