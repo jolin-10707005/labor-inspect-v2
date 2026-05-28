@@ -2766,7 +2766,7 @@ async function exportPayClient(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summaryRows),'請款明細(客戶)');
   // 直營店明細
   if(rcDet.length){
-    const ws2=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDet.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap)]);
+    const ws2=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDet.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap))]);
     setSheetPhotoLinks(ws2,rcDet.length,[15,18]);
     XLSX.utils.book_append_sheet(wb,ws2,'請款店明細(直營)');
   }
