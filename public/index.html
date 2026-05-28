@@ -2327,6 +2327,20 @@ async function delRecord(id,auditDate){
 }
 
 // ─── EXCEL EXPORT ───
+// 對工作表指定欄位設定超連結（多個 URL 以逗號分隔時，取第一個）
+function setSheetPhotoLinks(ws, rowCount, photoCols){
+  for(let ri=1;ri<=rowCount;ri++){
+    photoCols.forEach(c=>{
+      const addr=XLSX.utils.encode_cell({r:ri,c});
+      const cell=ws[addr];
+      if(!cell)return;
+      const val=String(cell.v||'').trim();
+      const firstUrl=val.split(',')[0].trim();
+      if(firstUrl.startsWith('http'))cell.l={Target:firstUrl};
+    });
+  }
+}
+
 function exportExcel(data,filename,sheetName){
   // Mark all-digit strings as text to preserve leading zeros (e.g. store codes)
   const safeData=data.map(row=>row.map(v=>
@@ -2650,29 +2664,22 @@ async function exportWeekly(){
   const startROC=toROC(document.getElementById('s-start').value);
   const endROC=toROC(document.getElementById('s-end').value);
 
+  // RC 照片欄：col15=紀錄照片, col18=完成照片
+  const RC_PHOTO_COLS=[15,18];
+  // FC 照片欄：各項無法判斷照片 + 完成照片
+  const FC_PHOTO_COLS=[15,18,21,24,27,30,33,34];
+
   // ── 直營店 RC sheet ──
   if(rcDetails.length){
     const ws=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDetails.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap))]);
-    rcDetails.forEach(({r},ri)=>{
-      const url=r.paper_photo;
-      if(url&&url.startsWith('http')){
-        const cr=XLSX.utils.encode_cell({r:ri+1,c:18});
-        if(!ws[cr])ws[cr]={v:url,t:'s'};ws[cr].l={Target:url};
-      }
-    });
+    setSheetPhotoLinks(ws,rcDetails.length,RC_PHOTO_COLS);
     XLSX.utils.book_append_sheet(wb,ws,'已完成(直營店)');
   }
 
   // ── 加盟店 FC sheet ──
   if(fcDetails.length){
     const ws=XLSX.utils.aoa_to_sheet([FC_HEADERS,...fcDetails.map(({r,fcAns})=>buildFCRow(r,fcAns))]);
-    fcDetails.forEach(({r},ri)=>{
-      const url=r.paper_photo;
-      if(url&&url.startsWith('http')){
-        const cr=XLSX.utils.encode_cell({r:ri+1,c:34}); // AI=col 34（加入查核作業欄後）
-        if(!ws[cr])ws[cr]={v:url,t:'s'};ws[cr].l={Target:url};
-      }
-    });
+    setSheetPhotoLinks(ws,fcDetails.length,FC_PHOTO_COLS);
     XLSX.utils.book_append_sheet(wb,ws,'已完成(加盟店)');
   }
 
@@ -2727,14 +2734,14 @@ async function exportPayClient(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summaryRows),'請款明細(客戶)');
   // 直營店明細
   if(rcDet.length){
-    const ws2=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDet.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap))]);
-    rcDet.forEach(({r},ri)=>{const url=r.paper_photo;if(url&&url.startsWith('http')){const cr=XLSX.utils.encode_cell({r:ri+1,c:18});if(!ws2[cr])ws2[cr]={v:url,t:'s'};ws2[cr].l={Target:url};}});
+    const ws2=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDet.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap)]);
+    setSheetPhotoLinks(ws2,rcDet.length,[15,18]);
     XLSX.utils.book_append_sheet(wb,ws2,'請款店明細(直營)');
   }
   // 加盟店明細
   if(fcDet.length){
     const ws3=XLSX.utils.aoa_to_sheet([FC_HEADERS,...fcDet.map(({r,fcAns})=>buildFCRow(r,fcAns))]);
-    fcDet.forEach(({r},ri)=>{const url=r.paper_photo;if(url&&url.startsWith('http')){const cr=XLSX.utils.encode_cell({r:ri+1,c:34});if(!ws3[cr])ws3[cr]={v:url,t:'s'};ws3[cr].l={Target:url};}});
+    setSheetPhotoLinks(ws3,fcDet.length,[15,18,21,24,27,30,33,34]);
     XLSX.utils.book_append_sheet(wb,ws3,'請款店明細(加盟)');
   }
   XLSX.writeFile(wb,`全家勞動檢查-請款金額-客戶_${toROC(start)}-${toROC(end)}.xlsx`);
