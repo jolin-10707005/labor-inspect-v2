@@ -522,7 +522,7 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
             <span class="e-radio"></span><span>有執行（請繼續填寫表單）</span>
           </button>
           <button class="exec-opt" onclick="selectExec('no-transfer',this)">
-            <span class="e-radio"></span><span>轉換店未執行</span>
+            <span class="e-radio"></span><span>未執行-本月轉換/解約店</span>
           </button>
         </div>
       </div>
@@ -2512,7 +2512,7 @@ function buildFCRow(r, fcAns){
     return a?(a.noteText||''):'';
   }
 
-  const fcExecLabel={'yes':'有執行','no-transfer':'轉換店未執行'};
+  const fcExecLabel={'yes':'有執行','no-transfer':'未執行-本月轉換/解約店'};
   return [
     tsUpload,                                      // A 上傳時間
     r.store_code, r.store_name,                    // B 店號  C 店名
