@@ -535,9 +535,14 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
       <!-- 主店店名（0-2 選「他店集中/查核結束」時顯示）-->
       <div id="main-store-card" style="display:none;background:#fff;border:2px solid var(--teal);border-radius:var(--r);padding:14px 16px;margin-bottom:12px">
         <div style="font-size:14px;font-weight:700;color:var(--teal-dark);margin-bottom:10px">🏪 提供資料的主店店名 <span class="req">*</span></div>
-        <input type="text" id="main-store-inp" placeholder="請填寫提供資料的主店店名"
-          style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:14px;font-family:inherit;box-sizing:border-box"
-          oninput="mainStoreName=this.value.trim()">
+        <div style="position:relative">
+          <input type="text" id="main-store-inp" placeholder="輸入店號或店名搜尋" autocomplete="off"
+            style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r2);font-size:14px;font-family:inherit;box-sizing:border-box"
+            oninput="searchMainStore(this.value)"
+            onblur="setTimeout(()=>{const s=document.getElementById('main-store-sug');if(s)s.style.display='none'},200)">
+          <div id="main-store-sug" style="display:none;position:absolute;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:0 0 var(--r2) var(--r2);max-height:160px;overflow-y:auto;z-index:99"></div>
+        </div>
+        <div id="main-store-confirmed" style="display:none;margin-top:8px;padding:8px 10px;background:var(--cream2);border-radius:var(--r2);font-size:13px;color:var(--teal-dark);font-weight:600"></div>
       </div>
 
       <!-- 紙本表格照片上傳 -->
@@ -837,7 +842,7 @@ const STORES_MASTER=window.DATA_STORES_MASTER||{};
 
 // STATE
 let categories=[],apiStores=[];
-let execStatus=null,mainStoreName='';
+let execStatus=null,mainStoreName='',mainStoreCode='';
 const DESC_PREFIX='[說明]'; // FC 說明段落偽題目的前綴
 function isDescQ(q){return !!(q&&q.content&&q.content.startsWith(DESC_PREFIX));}
 let selectedStore=null,selectedInspector=null,inspectorId=null;
@@ -1418,6 +1423,31 @@ function pickAddStore(code,name){
   document.getElementById('add-store-input').value=`${code} ${name}`;
   document.getElementById('store-sug').style.display='none';
 }
+// ─── MAIN STORE SEARCH（提供資料的主店店名）───
+function searchMainStore(val){
+  const sug=document.getElementById('main-store-sug');
+  const inp=document.getElementById('main-store-inp');
+  // 清除已確認的選取（使用者重新輸入視為未確認）
+  mainStoreName='';mainStoreCode='';
+  const conf=document.getElementById('main-store-confirmed');
+  if(conf){conf.style.display='none';conf.textContent='';}
+  if(inp){inp.style.borderColor='var(--border)';}
+  if(!val||val.length<1){if(sug)sug.style.display='none';return;}
+  const q=val.toLowerCase();
+  const results=Object.entries(STORES_MASTER).filter(([code,name])=>code.includes(val)||name.toLowerCase().includes(q)).slice(0,8);
+  if(!results.length){if(sug)sug.style.display='none';return;}
+  sug.innerHTML=results.map(([code,name])=>`<div class="sug-item" onmousedown="pickMainStore('${code}','${name.replace(/'/g,"&#39;")}')">${code} ${name}</div>`).join('');
+  sug.style.display='block';
+}
+function pickMainStore(code,name){
+  mainStoreCode=code;mainStoreName=name;
+  const inp=document.getElementById('main-store-inp');
+  if(inp){inp.value=`${code} ${name}`;inp.style.borderColor='var(--teal)';}
+  const sug=document.getElementById('main-store-sug');
+  if(sug)sug.style.display='none';
+  const conf=document.getElementById('main-store-confirmed');
+  if(conf){conf.textContent=`✅ 已選取：${code} ${name}`;conf.style.display='block';}
+}
 async function addCustomStore(){
   const val=document.getElementById('add-store-input').value.trim();
   if(!val){alert('請輸入店號或店名');return;}
@@ -1445,7 +1475,7 @@ function goToInspect(){
   console.log('[goToInspect] categories='+categories?.length+' currentStoreType='+currentStoreType+' lockedStoreType='+lockedStoreType);
   document.getElementById('ih-code').textContent=selectedStore.code;
   document.getElementById('ih-name').textContent=selectedStore.name;
-  initAnswers();execStatus=null;mainStoreName='';
+  initAnswers();execStatus=null;mainStoreName='';mainStoreCode='';
   document.querySelectorAll('.exec-opt').forEach(b=>b.classList.remove('yes-sel','no-sel'));
   document.getElementById('exec-other-txt').style.display='none';
   document.getElementById('questions-area').classList.add('hidden');
@@ -1453,7 +1483,9 @@ function goToInspect(){
   document.getElementById('paper-photo-preview').innerHTML='';
   document.getElementById('paper-photo-card').classList.remove('missing');
   const _msc=document.getElementById('main-store-card');if(_msc)_msc.style.display='none';
-  const _msi=document.getElementById('main-store-inp');if(_msi)_msi.value='';
+  const _msi=document.getElementById('main-store-inp');if(_msi){_msi.value='';_msi.style.borderColor='var(--border)';}
+  const _msug=document.getElementById('main-store-sug');if(_msug){_msug.style.display='none';_msug.innerHTML='';}
+  const _mconf=document.getElementById('main-store-confirmed');if(_mconf){_mconf.style.display='none';_mconf.textContent='';}
 
   // 依店型切換「查核作業是否執行」選項組
   const rcOpts=document.getElementById('exec-opts-rc');
@@ -1838,12 +1870,14 @@ async function submitInspection(){
   if(!execStatus){alert('請先選擇查核作業是否執行');return;}
   if(execStatus==='other'&&!document.getElementById('exec-other-txt').value.trim()){alert('請填寫其他原因');return;}
 
-  // 主店店名必填（0-2 他店集中查核結束）
-  if(isOtherStoreCollect()&&!mainStoreName){
+  // 主店店名必填且必須從店鋪檔選取（0-2 他店集中查核結束）
+  if(isOtherStoreCollect()){
     const inp=document.getElementById('main-store-inp');
-    if(inp){inp.style.borderColor='var(--red)';inp.focus();}
-    document.getElementById('main-store-card').scrollIntoView({behavior:'smooth',block:'center'});
-    alert('⚠ 請填寫提供資料的主店店名');return;
+    if(!mainStoreCode){
+      if(inp){inp.style.borderColor='var(--red)';inp.focus();}
+      document.getElementById('main-store-card').scrollIntoView({behavior:'smooth',block:'center'});
+      alert('⚠ 請從店鋪資料中選取提供資料的主店');return;
+    }
   }
   // Check paper photo required - 只要有執行都需要紙本照片
   if(execStatus==='yes'&&!paperPhotoData){
@@ -1941,7 +1975,7 @@ async function submitInspection(){
     section:document.getElementById('sel-section').value||'',
     exec_status:execStatus,
     exec_other:document.getElementById('exec-other-txt').value||'',
-    main_store_name:mainStoreName||'',
+    main_store_name:mainStoreCode?(mainStoreCode+' '+mainStoreName).trim():'',
     has_violation:execStatus==='yes'&&Object.values(answers).some(a=>a.is_vio)?1:0,
     paper_photo:'', // set below after compression
     // note 格式：「原因文字|||photoUrl1|||photoUrl2」（|||分隔，方便匯出時解析）
