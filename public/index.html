@@ -1434,6 +1434,18 @@ function goToInspect(){
   document.getElementById('paper-photo-card').style.display='none';
   document.getElementById('paper-photo-preview').innerHTML='';
   document.getElementById('paper-photo-card').classList.remove('missing');
+
+  // FC 加盟店：隱藏「查核作業是否執行」，自動設為有執行，直接顯示題目
+  const execCard=document.querySelector('.exec-card');
+  if(currentStoreType==='FC'){
+    if(execCard)execCard.style.display='none';
+    execStatus='yes';
+    document.getElementById('questions-area').classList.remove('hidden');
+    renderAllQuestions();
+  } else {
+    if(execCard)execCard.style.display='';
+  }
+
   updateScore();switchTab('inspect');
 }
 
