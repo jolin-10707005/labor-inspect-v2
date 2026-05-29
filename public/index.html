@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -1373,7 +1373,7 @@ async function loadCalendarStores(){
 
   // ── 處理本月已點檢店鋪（標記完成，不再依此強制切換店型）──
   if(existing&&existing.length){
-    existing.forEach(r=>completedStores.add(pad6(r.store_code)));
+    existing.forEach(r=>completedStores.add(String(r.store_code).padStart(6,'0')));
     console.log('[loadCalendarStores] gen='+myGen+' existing inspections found, count='+existing.length);
     // 不再依舊有點檢的 store_type 鎖定，店型完全由 autoDetectStoreType 依當月題目決定
   } else {
@@ -2293,7 +2293,6 @@ async function saveRecordAnswers(id,auditDate){
   });
   const selMap={};
   detDiv.querySelectorAll('.rec-edit-sel[data-qid]').forEach(s=>{selMap[s.dataset.qid]=parseInt(s.value);});
-  const r=recordsData.find(x=>x.id===id);
   const type=r?r.store_type||'RC':'RC';
   // build opt→is_vio lookup from cache
   const optVioMap={};
@@ -2430,7 +2429,7 @@ async function editRecord(id){
     const data=await api(`/api/inspections/${id}`);
     // ── 恢復全域狀態 ──
     editingInspectionId=id;
-    selectedStore={code:pad6(r.store_code),name:r.store_name};
+    selectedStore={code:String(r.store_code).padStart(6,'0'),name:r.store_name};
     currentStoreType=data.store_type||r.store_type||'RC';
     // 載入對應月份的題目（優先用快取）
     const month=getInspectMonth((data.audit_date||r.audit_date)+'T00:00');
