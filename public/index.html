@@ -2822,15 +2822,16 @@ async function fetchAllDetails(execOnly=false){
           const val=a.skipped?'':a.option_label||'';
           ansMap[a.question_id]=val;
           if(a.question_content)ansMap['c:'+a.question_content.slice(0,8)]=val;
-          if(a.note){
-            if(a.note.includes('|||')){
-              const parts=a.note.split('|||');
+          const _n=String(a.note||'');
+          if(_n){
+            if(_n.includes('|||')){
+              const parts=_n.split('|||');
               const txt=parts[0].trim();
               const photos=parts.slice(1).filter(u=>u.startsWith('http'));
               if(txt)noteMap[String(a.question_id)]=txt;
               if(photos.length)photoMap[String(a.question_id)]=photos;
-            } else if(a.note.trim()){
-              noteMap[String(a.question_id)]=a.note.trim();
+            } else if(_n.trim()){
+              noteMap[String(a.question_id)]=_n.trim();
             }
           }
         });
@@ -2849,25 +2850,23 @@ async function fetchAllDetails(execOnly=false){
       const val=a.skipped?'':a.option_label||'';
       ansMap[a.question_id]=val;
       if(a.question_content)ansMap['c:'+a.question_content.slice(0,8)]=val;
-      // 解析 note（格式：「原因文字|||url1|||url2」）
+      // 解析 note（格式：「原因文字|||url1|||url2」，note 可能為數字，統一轉字串）
+      const noteStr=String(a.note||'');
       let aPhotos=[];
-      if(a.note){
-        if(a.note.includes('|||')){
-          const parts=a.note.split('|||');
+      if(noteStr){
+        if(noteStr.includes('|||')){
+          const parts=noteStr.split('|||');
           const txt=parts[0].trim();
           aPhotos=parts.slice(1).filter(u=>u.startsWith('http'));
           if(txt)noteMap[String(a.question_id)]=txt;
           if(aPhotos.length)photoMap[String(a.question_id)]=aPhotos;
-        } else if(a.note.trim()){
-          noteMap[String(a.question_id)]=a.note.trim();
+        } else if(noteStr.trim()){
+          noteMap[String(a.question_id)]=noteStr.trim();
         }
       }
       // FC 結構化（包含 condition_note 供欄位路由）
       // noteText：無法判斷時點檢人員填入的原因文字
-      let _noteTxt='';
-      if(a.note){
-        _noteTxt=a.note.includes('|||')?a.note.split('|||')[0].trim():a.note.trim();
-      }
+      const _noteTxt=noteStr.includes('|||')?noteStr.split('|||')[0].trim():noteStr.trim();
       fcAns.push({
         cat:a.category_name||'', qc:a.question_content||'',
         cn:a.condition_note||'', label:val, photos:aPhotos,
