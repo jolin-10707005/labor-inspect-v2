@@ -777,8 +777,18 @@ function handleGetBatchAnswers(body) {
 }
 
 function handleEditInspection(id, body, user) {
-  const { exec_status, exec_other, note, answers } = body;
-  updateSheetRow('inspections', id, { exec_status, exec_other: exec_other || '', note: note || '' });
+  const { exec_status, exec_other, note, answers, paper_photo, main_store_name, has_violation,
+          store_code, store_name, store_type, audit_date, audit_time, inspector_name, section } = body;
+  // 基本欄位更新（paper_photo / main_store_name / has_violation 僅在有值時覆蓋）
+  const updates = { exec_status, exec_other: exec_other || '', note: note || '' };
+  if (paper_photo !== undefined) updates.paper_photo = paper_photo || '';
+  if (main_store_name !== undefined) updates.main_store_name = main_store_name || '';
+  if (has_violation !== undefined) updates.has_violation = has_violation ? 1 : 0;
+  if (audit_date) updates.audit_date = audit_date;
+  if (audit_time !== undefined) updates.audit_time = audit_time || '';
+  if (inspector_name) updates.inspector_name = inspector_name;
+  if (section !== undefined) updates.section = section || '';
+  updateSheetRow('inspections', id, updates);
   if (answers && answers.length > 0) {
     deleteRowsByField('inspection_answers', 'inspection_id', id);
     answers.forEach(a => {

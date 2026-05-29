@@ -219,6 +219,7 @@ body{font-family:"Noto Sans TC",sans-serif;background:var(--cream);color:var(--t
 .rec-actions{display:flex;gap:8px}
 .btn-detail{padding:7px 14px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text2)}
 .btn-del{padding:7px 14px;border-radius:6px;border:1.5px solid var(--red-border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--red)}
+.btn-edit-full{padding:7px 14px;border-radius:6px;border:1.5px solid var(--teal);background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--teal)}
 /* RECORD DETAIL EDIT */
 .rec-detail{border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
 .rec-det-info{background:var(--cream);border-radius:var(--r2);padding:10px 12px;margin-bottom:10px}
@@ -557,9 +558,15 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
         <div id="paper-photo-preview" class="photo-preview"></div>
       </div>
 
+      <!-- 編輯模式橫幅 -->
+      <div id="edit-mode-banner" style="display:none;background:#fff3cd;border:1.5px solid #ffc107;border-radius:var(--r2);padding:10px 14px;margin-bottom:10px;flex-direction:row;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:13px;font-weight:700;color:#856404">📝 編輯模式 — <span id="edit-mode-store"></span></span>
+        <button onclick="cancelEdit()" style="font-size:12px;color:var(--red);background:none;border:1px solid var(--red);border-radius:var(--r2);padding:4px 10px;cursor:pointer;flex-shrink:0">✕ 取消</button>
+      </div>
+
       <div class="submit-bar">
         <button class="btn-back2" onclick="switchTab('basic')">← 返回</button>
-        <button class="btn-submit" onclick="submitInspection()">✔ 完成並送出</button>
+        <button class="btn-submit" id="btn-submit-main" onclick="submitInspection()">✔ 完成並送出</button>
       </div>
       </div><!-- /sum-result --> ═══ -->
     <div class="tab-pane" id="tab-records">
@@ -843,6 +850,7 @@ const STORES_MASTER=window.DATA_STORES_MASTER||{};
 // STATE
 let categories=[],apiStores=[];
 let execStatus=null,mainStoreName='',mainStoreCode='';
+let editingInspectionId=null; // 編輯模式時儲存正在編輯的紀錄 ID
 const DESC_PREFIX='[說明]'; // FC 說明段落偽題目的前綴
 function isDescQ(q){return !!(q&&q.content&&q.content.startsWith(DESC_PREFIX));}
 let selectedStore=null,selectedInspector=null,inspectorId=null;
@@ -1886,15 +1894,17 @@ async function submitInspection(){
     alert('⚠ 請上傳紙本表格照片後才能送出');return;
   }
 
-  // ── 防重複：同店同日期只能一筆（嚴格阻擋）──
-  showLoading('檢查重複記錄中…');
-  let dupCheck;
-  try{
-    dupCheck=await api('/api/inspections/check','POST',{store_code:selectedStore.code,audit_date:document.getElementById('inspect-dt').value.split('T')[0]});
-  }finally{ hideLoading(); }
-  if(dupCheck && dupCheck.exists){
-    alert(`❌ 無法送出：此店鋪（${selectedStore.code} ${selectedStore.name}）今日已有點檢記錄！\n\n每家店每日僅能上傳一次。請至「查詢記錄」修改既有記錄。`);
-    return;
+  // ── 防重複：新增模式才檢查（編輯模式跳過）──
+  if(!editingInspectionId){
+    showLoading('檢查重複記錄中…');
+    let dupCheck;
+    try{
+      dupCheck=await api('/api/inspections/check','POST',{store_code:selectedStore.code,audit_date:document.getElementById('inspect-dt').value.split('T')[0]});
+    }finally{ hideLoading(); }
+    if(dupCheck && dupCheck.exists){
+      alert(`❌ 無法送出：此店鋪（${selectedStore.code} ${selectedStore.name}）今日已有點檢記錄！\n\n每家店每日僅能上傳一次。請至「查詢記錄」修改既有記錄。`);
+      return;
+    }
   }
 
   const allQs=getRealQs(); // 排除[說明]虛擬題
@@ -1992,18 +2002,34 @@ async function submitInspection(){
   };
   const apiStore=apiStores.find(s=>s.code===selectedStore.code);
   if(apiStore)payload.store_id=apiStore.id;
-  showLoading('送出記錄中…');
+  showLoading(editingInspectionId?'儲存修改中…':'送出記錄中…');
   try{
     // paperPhotoData 已是 Google Drive URL（由 handlePaperPhotoUpload 上傳取得）
     payload.paper_photo=paperPhotoData||'';
-    const result=await api('/api/inspections','POST',payload);
-    completedStores.add(selectedStore.code);
-    // 不再鎖定店型（由日期判定）
-    hideLoading();
-    // Show completion
-    const msg='✅ 查核完成';
-    alert(msg);
-    clearInspectForm();
+    let result;
+    if(editingInspectionId){
+      // 編輯模式：PUT 覆蓋原紀錄
+      result=await api(`/api/inspections/${editingInspectionId}`,'PUT',{
+        ...payload,changer:currentUser?.username||'未知'
+      });
+      // 清除編輯模式 UI
+      editingInspectionId=null;
+      const banner=document.getElementById('edit-mode-banner');
+      if(banner)banner.style.display='none';
+      const submitBtn=document.getElementById('btn-submit-main');
+      if(submitBtn)submitBtn.textContent='✔ 完成並送出';
+      hideLoading();
+      alert('✅ 修改完成');
+      // 返回查詢紀錄頁重新查詢
+      switchTab('records');
+      queryRecords();
+    }else{
+      result=await api('/api/inspections','POST',payload);
+      completedStores.add(selectedStore.code);
+      hideLoading();
+      alert('✅ 查核完成');
+      clearInspectForm();
+    }
   }catch(e){
     hideLoading();
     console.error('Submit error:',e);
@@ -2034,6 +2060,10 @@ function clearInspectForm(){
   // 清空店舖選擇與作答；保留人員資料（已從登入帶入，所有動作均記在此人員下）
   selectedStore=null;
   execStatus=null;calendarStores=[];
+  // 清除編輯模式
+  editingInspectionId=null;
+  const _banner=document.getElementById('edit-mode-banner');if(_banner)_banner.style.display='none';
+  const _sBtn=document.getElementById('btn-submit-main');if(_sBtn)_sBtn.textContent='✔ 完成並送出';
   initAnswers();
   // 人員資料 selectedInspector / inspectorId / dept / section 不清除，確保下一家可直接使用
   document.getElementById('start-bar').classList.add('hidden');
@@ -2099,7 +2129,8 @@ function renderRecords(){
       </div>
       <div class="rec-actions">
         <button class="btn-detail btn-toggle" id="toggle-${r.id}" onclick="toggleRecordDetail(${r.id},'${r.store_type||'RC'}','${r.audit_date}')">📋 展開明細</button>
-        <button class="btn-del" onclick="delRecord(${r.id},'${r.audit_date}')">刪除</button>
+        <button class="btn-edit-full" onclick="editRecord(${r.id})">✏ 編輯</button>
+        <button class="btn-del" onclick="delRecord(${r.id})">刪除</button>
       </div>
       <div class="rec-detail hidden" id="detail-${r.id}"></div>
     </div>
@@ -2246,10 +2277,8 @@ function recalcRecEditSkips(insId){
 }
 
 async function saveRecordAnswers(id,auditDate){
-  if(!isToday(auditDate)){
-    const pw=prompt('非當日記錄，請輸入密碼才能修改：');
-    if(pw!=='9588'){alert('密碼錯誤');return;}
-  }
+  const r=recordsData.find(x=>x.id===id);
+  if(r&&!checkEditPermission(r,'修改'))return;
   const detDiv=document.getElementById(`detail-${id}`);
   const orig=_detailCache[id];
   if(!detDiv||!orig)return;
@@ -2371,14 +2400,164 @@ function isToday(dateStr){
   const today=new Date().toISOString().split('T')[0];
   return dateStr===today;
 }
-async function delRecord(id,auditDate){
-  if(!isToday(auditDate)){
-    const pw=prompt('非當日記錄，請輸入密碼才能刪除：');
-    if(pw!=='9588'){alert('密碼錯誤');return;}
+
+// ─── 編輯/刪除權限檢查 ───
+// 當日：只有上傳者本人可操作；跨日：輸入密碼（不限人員）
+function checkEditPermission(r,action){
+  if(isToday(r.audit_date)){
+    if(String(r.auditor_id)!==String(currentUser?.id)){
+      alert(`當日點檢紀錄只能由上傳者本人（${r.inspector_name||'上傳者'}）${action}`);
+      return false;
+    }
+    return true;
+  }else{
+    const pw=prompt(`跨日${action}需輸入密碼：`);
+    if(pw!=='9588'){alert('密碼錯誤');return false;}
+    return true;
   }
+}
+
+// ─── 編輯點檢（帶回點檢作業畫面）───
+async function editRecord(id){
+  const r=recordsData.find(x=>x.id===id);
+  if(!r)return;
+  if(!checkEditPermission(r,'編輯'))return;
+  showLoading('載入點檢資料…');
+  try{
+    const data=await api(`/api/inspections/${id}`);
+    // ── 恢復全域狀態 ──
+    editingInspectionId=id;
+    selectedStore={code:pad6(r.store_code),name:r.store_name};
+    currentStoreType=data.store_type||r.store_type||'RC';
+    // 載入對應月份的題目（優先用快取）
+    const month=getInspectMonth((data.audit_date||r.audit_date)+'T00:00');
+    if(!_clCache[currentStoreType]){
+      _clCache[currentStoreType]=await cachedApi(`/api/checklist?store_type=${currentStoreType}&month=${month}`);
+    }
+    categories=_clCache[currentStoreType]||[];
+    // 恢復 exec status
+    execStatus=data.exec_status||null;
+    // 恢復答案（先初始化預設，再逐題覆蓋）
+    initAnswers();
+    if(data.answers&&data.answers.length){
+      data.answers.forEach(a=>{
+        if(answers.hasOwnProperty(a.question_id)){
+          // note 格式：「文字|||photoUrl1|||...」
+          const noteParts=(a.note||'').split('|||');
+          const textNote=noteParts[0]||'';
+          const photoUrls=noteParts.slice(1).filter(u=>u.startsWith('http'));
+          if(photoUrls.length)photosByQ[a.question_id]=photoUrls;
+          answers[a.question_id]={
+            opt_id:a.opt_id||null,
+            param:a.option_param||a.param_code||'',
+            is_vio:!!(a.is_violation||a.is_vio),
+            skipped:!!(parseInt(a.skipped)),
+            note:textNote,
+            canPhoto:null // 拍照/不拍照選擇不儲存，回到預設
+          };
+        }
+      });
+    }
+    // 恢復紙本照片
+    paperPhotoData=data.paper_photo&&String(data.paper_photo).startsWith('http')?data.paper_photo:null;
+    // 恢復主店店名（FC）
+    mainStoreCode='';mainStoreName='';
+    if(data.main_store_name){
+      const parts=String(data.main_store_name).split(' ');
+      mainStoreCode=parts[0]||'';
+      mainStoreName=parts.slice(1).join(' ')||'';
+    }
+    hideLoading();
+    goToInspectEdit(data);
+  }catch(e){
+    hideLoading();
+    alert('載入失敗：'+(e.message||'未知錯誤'));
+    editingInspectionId=null;
+  }
+}
+
+// 帶回點檢作業畫面（編輯模式）
+function goToInspectEdit(data){
+  // 店鋪 header
+  document.getElementById('ih-code').textContent=selectedStore.code;
+  document.getElementById('ih-name').textContent=selectedStore.name;
+  // 顯示編輯模式橫幅
+  const banner=document.getElementById('edit-mode-banner');
+  if(banner){banner.style.display='flex';document.getElementById('edit-mode-store').textContent=`${selectedStore.code} ${selectedStore.name}`;}
+  const submitBtn=document.getElementById('btn-submit-main');
+  if(submitBtn)submitBtn.textContent='💾 儲存修改';
+  // 切換 exec 選項組
+  const rcOpts=document.getElementById('exec-opts-rc');
+  const fcOpts=document.getElementById('exec-opts-fc');
+  if(currentStoreType==='FC'){if(rcOpts)rcOpts.style.display='none';if(fcOpts)fcOpts.style.display='';}
+  else{if(rcOpts)rcOpts.style.display='';if(fcOpts)fcOpts.style.display='none';}
+  // 恢復 exec status 視覺選取
+  document.querySelectorAll('.exec-opt').forEach(b=>b.classList.remove('yes-sel','no-sel'));
+  document.getElementById('exec-other-txt').style.display='none';
+  if(execStatus){
+    document.querySelectorAll('.exec-opt').forEach(btn=>{
+      const oc=btn.getAttribute('onclick')||'';
+      const m=oc.match(/selectExec\('([^']+)'/);
+      if(m&&m[1]===execStatus)btn.classList.add(execStatus==='yes'?'yes-sel':'no-sel');
+    });
+    if(execStatus==='other'){
+      document.getElementById('exec-other-txt').style.display='block';
+      document.getElementById('exec-other-txt').value=data.exec_other||'';
+    }
+  }
+  // 顯示題目區及紙本照片
+  const qArea=document.getElementById('questions-area');
+  const paperCard=document.getElementById('paper-photo-card');
+  if(execStatus==='yes'){
+    qArea.classList.remove('hidden');
+    paperCard.style.display='block';
+    renderAllQuestions();
+  }else{
+    qArea.classList.add('hidden');
+    paperCard.style.display='none';
+  }
+  paperCard.classList.remove('missing');
+  // 恢復紙本照片預覽
+  const prev=document.getElementById('paper-photo-preview');
+  if(prev){
+    if(paperPhotoData){
+      prev.innerHTML=`<div style="position:relative;display:inline-block">
+        <img src="${paperPhotoData}" style="max-width:100%;max-height:200px;border-radius:8px" loading="lazy">
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">點擊下方按鈕可更換照片</div>
+      </div>`;
+    }else{prev.innerHTML='';}
+  }
+  // 恢復主店店名（FC）
+  const mainStoreCard=document.getElementById('main-store-card');
+  if(mainStoreCard)mainStoreCard.style.display=isOtherStoreCollect()?'block':'none';
+  if(mainStoreCode){
+    const msi=document.getElementById('main-store-inp');
+    if(msi){msi.value=`${mainStoreCode} ${mainStoreName}`;msi.style.borderColor='var(--teal)';}
+    const mconf=document.getElementById('main-store-confirmed');
+    if(mconf){mconf.textContent=`✅ 已選取：${mainStoreCode} ${mainStoreName}`;mconf.style.display='block';}
+  }
+  // 設定點檢日期（鎖定為原始日期）
+  setInspectDt(`${data.audit_date}T${data.audit_time||'00:00'}`);
+  updateScore();
+  switchTab('inspect');
+}
+
+// 取消編輯模式
+function cancelEdit(){
+  if(!confirm('確定取消編輯？未儲存的變更將會遺失。'))return;
+  editingInspectionId=null;
+  const banner=document.getElementById('edit-mode-banner');
+  if(banner)banner.style.display='none';
+  const submitBtn=document.getElementById('btn-submit-main');
+  if(submitBtn)submitBtn.textContent='✔ 完成並送出';
+  switchTab('records');
+}
+
+async function delRecord(id,auditDate){
+  const r=recordsData.find(x=>x.id===id);
+  if(!r||!checkEditPermission(r,'刪除'))return;
   if(!confirm('確定要刪除此筆記錄？'))return;
   const note=prompt('請填寫刪除原因（選填）：')||'';
-  const r=recordsData.find(x=>x.id===id);
   await api(`/api/inspections/${id}`,'DELETE',{note,changer:currentUser?.username||'未知'});
   // 刪除後把店鋪移回待點清單
   if(r?.store_code){
