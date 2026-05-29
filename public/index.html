@@ -2632,11 +2632,11 @@ function toTaipei(utcStr){
   try{
     const s=String(utcStr).slice(0,19).replace(' ','T');
     const d=new Date(s+'Z'); // 強制視為 UTC
-    if(isNaN(d.getTime())) return String(utcStr).slice(0,19).replace('T',' ');
+    if(isNaN(d.getTime())) return ''; // 非日期值（如員工ID）回傳空字串
     const tp=new Date(d.getTime()+8*3600000); // +8 小時
     const p=n=>String(n).padStart(2,'0');
     return `${tp.getUTCFullYear()}-${p(tp.getUTCMonth()+1)}-${p(tp.getUTCDate())} ${p(tp.getUTCHours())}:${p(tp.getUTCMinutes())}:${p(tp.getUTCSeconds())}`;
-  }catch{ return String(utcStr).slice(0,19).replace('T',' '); }
+  }catch{ return ''; }
 }
 function buildWeeklyRow(r,ansMap,photoMap={},noteMap={}){
   const execLabel={'yes':'有執行(請繼續填寫表單)','no-docs':'班表&出勤紀錄都沒提供，未執行','no-transfer':'執行當日轉換、未執行','other':r.exec_other||'其他'};
@@ -2646,7 +2646,7 @@ function buildWeeklyRow(r,ansMap,photoMap={},noteMap={}){
   const HHmm=toTimeDisplay(r.audit_time);
   const dateTimeCol=mmdd&&HHmm?`${mmdd}-${HHmm}`:r.audit_date;
   // 上傳時間：created_at 轉台北時間
-  const tsUpload=toTaipei(r.created_at);
+  const tsUpload=toTaipei(r.created_at)||r.audit_date||'';
   // 無法判斷說明：彙整所有題目的文字原因（以 ；分隔）
   const unclearNote=Object.values(noteMap||{}).filter(Boolean).join('；');
   // 紀錄照片：所有無法判斷照片 URL，逗號分隔
@@ -2680,7 +2680,7 @@ function buildFCRow(r, fcAns){
   const mmdd=dateParts.length>=3?`${dateParts[1]}${dateParts[2]}`:'';
   const HHmm=toTimeDisplay(r.audit_time);
   const dateTimeCol=mmdd&&HHmm?`${mmdd}-${HHmm}`:r.audit_date;
-  const tsUpload=toTaipei(r.created_at);
+  const tsUpload=toTaipei(r.created_at)||r.audit_date||'';
 
   // 查詢輔助：依 category + question content + condition_note 取值/照片
   function getVal(catKw, qcKw, cnKw){
