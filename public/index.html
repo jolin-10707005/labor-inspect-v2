@@ -2903,35 +2903,42 @@ const RC_HEADERS=['上傳時間','店號','店名','點檢日期','點檢人員'
 
 async function exportWeekly(){
   if(!summaryData.length){alert('請先查詢');return;}
-  const details=await fetchAllDetails();
-  details.sort((a,b)=>String(a.r.created_at||'').localeCompare(String(b.r.created_at||'')));
-  const rcDetails=details.filter(d=>d.r.store_type!=='FC');
-  const fcDetails=details.filter(d=>d.r.store_type==='FC');
-  const wb=XLSX.utils.book_new();
-  const startROC=toROC(document.getElementById('s-start').value);
-  const endROC=toROC(document.getElementById('s-end').value);
+  showLoading('正在載入點檢資料…');
+  try{
+    const details=await fetchAllDetails();
+    details.sort((a,b)=>String(a.r.created_at||'').localeCompare(String(b.r.created_at||'')));
+    const rcDetails=details.filter(d=>d.r.store_type!=='FC');
+    const fcDetails=details.filter(d=>d.r.store_type==='FC');
+    const wb=XLSX.utils.book_new();
+    const startROC=toROC(document.getElementById('s-start').value);
+    const endROC=toROC(document.getElementById('s-end').value);
 
-  // RC 照片欄：col15=紀錄照片, col18=完成照片
-  const RC_PHOTO_COLS=[15,18];
-  // FC 照片欄：各項無法判斷照片 + 完成照片
-  const FC_PHOTO_COLS=[16,19,22,25,28,31,34,35];
+    // RC 照片欄：col15=紀錄照片, col18=完成照片
+    const RC_PHOTO_COLS=[15,18];
+    // FC 照片欄：各項無法判斷照片 + 完成照片
+    const FC_PHOTO_COLS=[16,19,22,25,28,31,34,35];
 
-  // ── 直營店 RC sheet ──
-  if(rcDetails.length){
-    const ws=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDetails.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap))]);
-    setSheetPhotoLinks(ws,rcDetails.length,RC_PHOTO_COLS);
-    XLSX.utils.book_append_sheet(wb,ws,'已完成(直營店)');
+    // ── 直營店 RC sheet ──
+    if(rcDetails.length){
+      const ws=XLSX.utils.aoa_to_sheet([RC_HEADERS,...rcDetails.map(({r,ansMap,photoMap,noteMap})=>buildWeeklyRow(r,ansMap,photoMap,noteMap))]);
+      setSheetPhotoLinks(ws,rcDetails.length,RC_PHOTO_COLS);
+      XLSX.utils.book_append_sheet(wb,ws,'已完成(直營店)');
+    }
+
+    // ── 加盟店 FC sheet ──
+    if(fcDetails.length){
+      const ws=XLSX.utils.aoa_to_sheet([FC_HEADERS,...fcDetails.map(({r,fcAns})=>buildFCRow(r,fcAns))]);
+      setSheetPhotoLinks(ws,fcDetails.length,FC_PHOTO_COLS);
+      XLSX.utils.book_append_sheet(wb,ws,'已完成(加盟店)');
+    }
+
+    hideLoading();
+    if(!wb.SheetNames.length){alert('查無資料可匯出');return;}
+    XLSX.writeFile(wb,`全家店舖勞動檢查週彙總表_${startROC}-${endROC}.xlsx`);
+  }catch(e){
+    hideLoading();
+    alert('匯出失敗：'+(e.message||String(e)));
   }
-
-  // ── 加盟店 FC sheet ──
-  if(fcDetails.length){
-    const ws=XLSX.utils.aoa_to_sheet([FC_HEADERS,...fcDetails.map(({r,fcAns})=>buildFCRow(r,fcAns))]);
-    setSheetPhotoLinks(ws,fcDetails.length,FC_PHOTO_COLS);
-    XLSX.utils.book_append_sheet(wb,ws,'已完成(加盟店)');
-  }
-
-  if(!wb.SheetNames.length){alert('查無資料可匯出');return;}
-  XLSX.writeFile(wb,`全家店舖勞動檢查週彙總表_${startROC}-${endROC}.xlsx`);
 }
 
 function buildPaySummary(title,rcCount,otherCount){
