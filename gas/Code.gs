@@ -58,7 +58,9 @@ function getNextId(sheetName) {
 
 function appendObj(sheetName, headers, obj) {
   const s = getSheet(sheetName);
-  const row = headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
+  // 以 Sheet 第一列的實際欄位順序寫入，避免程式碼與試算表欄位順序不一致造成資料錯欄
+  const sheetHeaders = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+  const row = sheetHeaders.map(h => (obj[h] !== undefined ? obj[h] : ''));
   s.appendRow(row);
   return obj.id;
 }
