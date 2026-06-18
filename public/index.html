@@ -2184,19 +2184,21 @@ async function toggleRecordDetail(id,storeType,auditDate){
         html+=`<div class="rec-det-cat"><div class="rec-det-cat-title">${cat}</div>`;
         items.forEach(a=>{
           const opts=qOptsMap[a.question_id]||[];
-          // 唯讀顯示：不產生 <select>，只顯示已選答案文字
+          // 唯讀顯示答案（展開明細僅供查詢）
           const ansLabel=a.skipped?'（跳過）':(a.option_label||'—');
-          // 解析照片/備註
-          const noteStr=String(a.note||'');
-          const noteParts=noteStr.includes('|||')?noteStr.split('|||'):['',''];
-          const noteTxt=noteStr.includes('|||')?noteParts[0].trim():noteStr.trim();
-          const photoUrls=noteStr.includes('|||')?noteParts.slice(1).filter(u=>u.startsWith('http')):[];
+          const _ns=String(a.note||'');
+          const _nt=_ns.includes('|||')?_ns.split('|||')[0].trim():_ns.trim();
+          const _pu=_ns.includes('|||')?_ns.split('|||').slice(1).filter(u=>u.startsWith('http')):[];
           html+=`<div class="rec-edit-q" ${a.skipped?'style="opacity:.45"':''}>
             <div class="rec-edit-qlabel">${a.question_content}</div>
             <span class="rec-edit-skip">${ansLabel}</span>
-            ${noteTxt?`<div style="font-size:12px;color:var(--text2);margin-top:3px">📝 ${escHtml(noteTxt)}</div>`:''}
-            ${photoUrls.map(u=>`<img src="${u}" style="max-width:100%;max-height:80px;border-radius:6px;margin-top:4px" onclick="window.open('${u}')">`).join('')}
-          </div>`
+            ${_nt?`<div style="font-size:12px;color:var(--text2);margin-top:3px">📝 ${escHtml(_nt)}</div>`:''}
+            ${_pu.map(u=>`<img src="${u}" style="max-width:100%;max-height:80px;border-radius:6px;margin-top:4px;cursor:pointer" onclick="window.open('${u}','_blank')">`).join('')}
+          </div>`;
+        });
+        html+='</div>';
+      });
+
     } else {
       html+='<div style="font-size:13px;color:var(--text3);padding:8px 0;text-align:center">無點檢明細資料</div>';
     }
@@ -2402,11 +2404,12 @@ function checkEditPermission(r,action){
     const idOk=String(r.auditor_id)===String(currentUser?.id);
     const nameOk=r.inspector_name&&currentUser?.username&&String(r.inspector_name)===String(currentUser.username);
     if(idOk||nameOk)return true; // 本人直接通過
-    const pw=prompt(非上傳者操作，請輸入密碼（上傳者：${r.inspector_name||'未知'}）：);
+    // 非本人：提示輸入密碼
+    const pw=prompt(`非上傳者操作，請輸入密碼（上傳者：${r.inspector_name||'未知'}）：`);
     if(pw!=='9588'){alert('密碼錯誤');return false;}
     return true;
   }else{
-    const pw=prompt(跨日${action}需輸入密碼：);
+    const pw=prompt(`跨日${action}需輸入密碼：`);
     if(pw!=='9588'){alert('密碼錯誤');return false;}
     return true;
   }
