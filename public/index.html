@@ -2184,31 +2184,19 @@ async function toggleRecordDetail(id,storeType,auditDate){
         html+=`<div class="rec-det-cat"><div class="rec-det-cat-title">${cat}</div>`;
         items.forEach(a=>{
           const opts=qOptsMap[a.question_id]||[];
-          const optHtml=opts.map(o=>`<option value="${o.id}" data-skip='${JSON.stringify(o.skip_items||[])}' ${String(o.id)===String(a.opt_id)?'selected':''}>${o.label}</option>`).join('');
-          // 判斷是否需要照片（option label 含 請拍照記錄 或 拍照上傳）
-          const needsEditPhoto=(a.option_label||'').includes('請拍照記錄')||(a.option_label||'').includes('拍照上傳');
-          const existPhotoUrl=a.note&&a.note.startsWith('https://')?a.note:'';
-          html+=`<div class="rec-edit-q" id="req-${id}-${a.question_id}" data-qid="${a.question_id}" ${a.skipped?'style="opacity:.45"':''}>
+          // 唯讀顯示：不產生 <select>，只顯示已選答案文字
+          const ansLabel=a.skipped?'（跳過）':(a.option_label||'—');
+          // 解析照片/備註
+          const noteStr=String(a.note||'');
+          const noteParts=noteStr.includes('|||')?noteStr.split('|||'):['',''];
+          const noteTxt=noteStr.includes('|||')?noteParts[0].trim():noteStr.trim();
+          const photoUrls=noteStr.includes('|||')?noteParts.slice(1).filter(u=>u.startsWith('http')):[];
+          html+=`<div class="rec-edit-q" ${a.skipped?'style="opacity:.45"':''}>
             <div class="rec-edit-qlabel">${a.question_content}</div>
-            ${a.skipped
-              ?`<span class="rec-edit-skip" id="reqskip-${id}-${a.question_id}">（跳過）</span>`
-              :opts.length
-                ?`<select class="rec-edit-sel" data-qid="${a.question_id}" onchange="onRecEditChange(${id},this)">${optHtml}</select><span class="rec-edit-skip" id="reqskip-${id}-${a.question_id}" style="display:none">（跳過）</span>`
-                :`<span class="rec-edit-skip">${a.option_label||'—'}</span>`
-            }
-            ${needsEditPhoto&&!a.skipped?`<div style="margin-top:6px;padding:8px;background:var(--red-bg);border-radius:var(--r2);border:1px solid var(--red-border)">
-              <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:5px">📷 無法判斷照片</div>
-              <div style="display:flex;gap:6px;margin-bottom:6px">
-                <button class="photo-btn" style="flex:1;padding:7px 4px;font-size:12px" onclick="openEditPhoto(${id},${a.question_id},'camera')">📷 拍照</button>
-                <button class="photo-btn" style="flex:1;padding:7px 4px;font-size:12px" onclick="openEditPhoto(${id},${a.question_id},'gallery')">🖼 選取</button>
-              </div>
-              <div id="ephoto-${id}-${a.question_id}">${existPhotoUrl?`<img src="${existPhotoUrl}" style="max-width:100%;max-height:100px;border-radius:6px" onclick="clearEditPhoto(${id},${a.question_id})" title="點擊移除">`:''}</div>
-            </div>`:''}
-          </div>`;
-        });
-        html+='</div>';
-      });
-      html+=`<div class="rec-det-actions"><button class="btn-save-ans" onclick="saveRecordAnswers(${id},'${auditDate}')">💾 儲存修改</button></div>`;
+            <span class="rec-edit-skip">${ansLabel}</span>
+            ${noteTxt?`<div style="font-size:12px;color:var(--text2);margin-top:3px">📝 ${escHtml(noteTxt)}</div>`:''}
+            ${photoUrls.map(u=>`<img src="${u}" style="max-width:100%;max-height:80px;border-radius:6px;margin-top:4px" onclick="window.open('${u}')">`).join('')}
+          </div>`
     } else {
       html+='<div style="font-size:13px;color:var(--text3);padding:8px 0;text-align:center">無點檢明細資料</div>';
     }
@@ -2413,13 +2401,12 @@ function checkEditPermission(r,action){
   if(isToday(r.audit_date)){
     const idOk=String(r.auditor_id)===String(currentUser?.id);
     const nameOk=r.inspector_name&&currentUser?.username&&String(r.inspector_name)===String(currentUser.username);
-    if(!idOk&&!nameOk){
-      alert(`當日點檢紀錄只能由上傳者本人（${r.inspector_name||'上傳者'}）${action}`);
-      return false;
-    }
+    if(idOk||nameOk)return true; // 本人直接通過
+    const pw=prompt(非上傳者操作，請輸入密碼（上傳者：${r.inspector_name||'未知'}）：);
+    if(pw!=='9588'){alert('密碼錯誤');return false;}
     return true;
   }else{
-    const pw=prompt(`跨日${action}需輸入密碼：`);
+    const pw=prompt(跨日${action}需輸入密碼：);
     if(pw!=='9588'){alert('密碼錯誤');return false;}
     return true;
   }

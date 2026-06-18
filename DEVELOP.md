@@ -1,6 +1,6 @@
-# 勞檢查核平台 — 開發者技術手冊
+﻿# 勞檢查核平台 — 開發者技術手冊
 > **Labor Inspection System v3**  
-> 最後更新：2026-06-02 | 架構：GitHub Pages + Google Apps Script + Google Sheets
+> 最後更新：2026-06-12 | 架構：GitHub Pages + Google Apps Script + Google Sheets
 
 ---
 
@@ -264,9 +264,13 @@ async function api(path, method='GET', body=null) {
 ```javascript
 function checkEditPermission(r, action) {
   if (isToday(r.audit_date)) {
-    // 當日：只有上傳者本人（auditor_id 比對）
-    if (String(r.auditor_id) !== String(currentUser?.id)) {
-      alert(`當日點檢紀錄只能由上傳者本人操作`);
+    // 當日：auditor_id 比對，備援用 inspector_name 比對
+    // （auditor_id 若因 appendObj bug 存成時間戳，fallback 至姓名）
+    const idOk = String(r.auditor_id) === String(currentUser?.id);
+    const nameOk = r.inspector_name && currentUser?.username &&
+                   String(r.inspector_name) === String(currentUser.username);
+    if (!idOk && !nameOk) {
+      alert(`當日點檢紀錄只能由上傳者本人（${r.inspector_name}）${action}`);
       return false;
     }
     return true;
@@ -275,6 +279,26 @@ function checkEditPermission(r, action) {
     const pw = prompt(`跨日${action}需輸入密碼：`);
     return pw === '9588';
   }
+}
+```
+
+### 5.7 防重複送出鎖（_isSubmitting）
+網路不穩時，使用者可能在 GAS 回應前再次點「送出」，造成重複寫入。
+```javascript
+let _isSubmitting = false; // 全域鎖
+
+async function submitInspection() {
+  if (_isSubmitting) { return; }  // 送出中直接忽略重複點擊
+  // ...驗證邏輯...
+  _isSubmitting = true;
+  showLoading('送出記錄中…');
+  try {
+    // ...API 呼叫...
+  } catch(e) {
+    _isSubmitting = false; // 失敗時解鎖，允許重試
+    // ...錯誤提示...
+  }
+  // 成功後 clearInspectForm() 會透過流程結束，鎖不需手動解（頁面重置）
 }
 ```
 
@@ -552,6 +576,18 @@ O-AJ: 各點檢項目（主答案 + 無法判斷原因 + 照片）
 已修正 `appendObj` 改用 `s.getRange(1,1,1,lastCol).getValues()[0]`
 讀取 Sheet 第一列實際欄位名稱決定寫入位置。
 
+### Q: 網路不穩時同一家店出現兩筆重複記錄
+**A**: 送出時網路延遲，使用者再次點「送出」，兩個請求都在 GAS 寫入前通過重複檢查，
+導致兩筆資料落入 Sheets。
+已修正：`submitInspection()` 加入 `_isSubmitting` 鎖，送出期間忽略所有重複點擊。
+若已發生重複資料，由管理員輸入密碼（`9588`）刪除多餘那筆。
+
+### Q: 本人刪除自己當日記錄，卻顯示「只有本人才能刪除」
+**A**: `checkEditPermission()` 比對 `auditor_id` 時，若該欄位因 `appendObj` 欄位錯置
+而存入時間戳記（非員工 ID），比對必然失敗。
+已修正：加入 `inspector_name` 備援比對，`auditor_id` 或 `inspector_name` 任一吻合即可通過。
+根本修法：在 GAS 編輯器重新部署 `appendObj` 修正版，確保新資料寫入正確欄位。
+
 ### Q: 如何新增應查店舖
 **A**: 維護專區 → 應查店舖分頁 → 設定應查店舖，
 或直接在 `assigned_stores` 工作表維護。
@@ -565,6 +601,8 @@ O-AJ: 各點檢項目（主答案 + 無法判斷原因 + 照片）
 ## 12. 版本異動記錄
 
 ### v3.x（2026-06）
+- ✅ 修正 `submitInspection()` 加入 `_isSubmitting` 防重複送出鎖，解決網路不穩造成重複建檔
+- ✅ 修正 `checkEditPermission()` 加入 `inspector_name` 備援比對，修正本人無法刪除自身紀錄的矛盾
 - ✅ 修正 `appendObj` 依 Sheet 實際欄位順序寫入（防止欄位錯置）
 - ✅ 修正 `toTaipei()` 對無效日期值（如員工 ID）回傳空字串
 - ✅ 修正 `a.note.includes is not a function`（note 可能為數字，強制轉字串）

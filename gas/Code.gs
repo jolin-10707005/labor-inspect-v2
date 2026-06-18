@@ -1,4 +1,4 @@
-// ══════════════════════════════════════════════
+﻿// ══════════════════════════════════════════════
 // 勞檢查核平台 — Google Apps Script 後端
 // ══════════════════════════════════════════════
 
@@ -54,6 +54,13 @@ function getNextId(sheetName) {
   if (lastRow < 2) return 1;
   const val = s.getRange(lastRow, 1).getValue();
   return (parseInt(val) || 0) + 1;
+}
+
+// 以腳本鎖保護的 ID 分配，防止並發請求拿到相同 ID
+function getNextIdLocked(sheetName) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return getNextId(sheetName); } finally { lock.releaseLock(); }
 }
 
 function appendObj(sheetName, headers, obj) {
@@ -687,7 +694,7 @@ function handleGetInspections(params) {
 function handleCreateInspection(body, user) {
   ensureAnswersNoteColumn(); // 確保 note 欄位存在
   const { store_code, store_name, store_type, audit_date, audit_time, inspector_name, section, exec_status, exec_other, has_violation, paper_photo, main_store_name, answers } = body;
-  const id = getNextId('inspections');
+  const id = getNextIdLocked('inspections');
   const t = now();
   appendObj('inspections',
     ['id', 'store_code', 'store_name', 'store_type', 'audit_date', 'audit_time', 'inspector_name', 'section', 'exec_status', 'exec_other', 'has_violation', 'paper_photo', 'main_store_name', 'auditor_id', 'created_at'],
