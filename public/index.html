@@ -944,7 +944,19 @@ async function api(path,method='GET',body=null){
     opts.method='POST';
     opts.body=JSON.stringify(payload);
   }
-  const r=await fetch(url.toString(),opts);
+  // 30 秒逾時保護，避免 GAS 無回應時畫面永久卡住
+  const _ctrl=new AbortController();
+  const _tid=setTimeout(()=>_ctrl.abort(),30000);
+  opts.signal=_ctrl.signal;
+  let r;
+  try{
+    r=await fetch(url.toString(),opts);
+  }catch(e){
+    clearTimeout(_tid);
+    if(e.name==='AbortError')throw new Error('請求逾時（30s），請檢查網路或稍後再試');
+    throw e;
+  }
+  clearTimeout(_tid);
   const data=await r.json();
   if(data.code===401){
     localStorage.removeItem('ci_master_token'); // master token 過期，下次登入重設
