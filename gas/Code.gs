@@ -66,7 +66,10 @@ function getNextIdLocked(sheetName) {
 function appendObj(sheetName, headers, obj) {
   const s = getSheet(sheetName);
   // 以 Sheet 第一列的實際欄位順序寫入，避免程式碼與試算表欄位順序不一致造成資料錯欄
-  const sheetHeaders = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+  const lastCol = s.getLastColumn();
+  const sheetHeaders = lastCol > 0
+    ? s.getRange(1, 1, 1, lastCol).getValues()[0]
+    : headers; // sheet 為空時用傳入的 headers 備援
   const row = sheetHeaders.map(h => (obj[h] !== undefined ? obj[h] : ''));
   s.appendRow(row);
   return obj.id;
