@@ -1,6 +1,6 @@
-﻿# 勞檢查核平台 — 開發者技術手冊
-> **Labor Inspection System v3**  
-> 最後更新：2026-06-12 | 架構：GitHub Pages + Google Apps Script + Google Sheets
+# 勞檢查核平台 — 開發者技術手冊
+> **Labor Inspection System v3**
+> 最後更新：2026-06-30 | 架構：GitHub Pages + Google Apps Script + Google Sheets
 
 ---
 
@@ -22,6 +22,7 @@
 
 ## 1. 系統架構總覽
 
+### 主要部署（GitHub Pages + GAS）
 ```
 瀏覽器（使用者）
     │
@@ -57,12 +58,35 @@
 └─────────────────────────────────────────────┘
 ```
 
+### 備用部署（Cloud Run + Cloudflare Workers + D1）
+```
+瀏覽器
+    │
+    ▼
+Cloud Run URL: https://labor-inspect-403438157899.asia-east1.run.app/
+    │
+    ├─ 靜態檔案：public/ 目錄（同一套前端）
+    └─ API：src/worker.js（Cloudflare Workers 語法）
+                    │
+                    ▼
+             Cloudflare D1（SQLite）
+             · users / stores / assigned_stores
+             · categories / questions / options
+             · inspections / inspection_answers / audit_log
+```
+
+> ⚠ 兩套部署使用**不同資料庫**，資料不互通。
+> 前端 token 以 URL 參數 `?token=xxx` 傳送，worker.js 同時接受 URL 參數與 Authorization Header。
+
 ### 部署路徑
 ```
 git push origin main
-    └─→ GitHub Actions (.github/workflows/deploy.yml)
-            └─→ GitHub Pages（public/ 目錄靜態發布）
-                    URL: https://jolin-10707005.github.io/labor-inspect-v2/
+    ├─→ GitHub Actions (.github/workflows/deploy.yml)
+    │       └─→ GitHub Pages（public/ 靜態發布）
+    │               URL: https://jolin-10707005.github.io/labor-inspect-v2/
+    │
+    └─→ Cloud Run（需 IT 手動部署，無自動化流程）
+            URL: https://labor-inspect-403438157899.asia-east1.run.app/
 ```
 
 ---
@@ -72,21 +96,20 @@ git push origin main
 ```
 labor-inspect-v2/
 ├── public/
-│   ├── index.html              # ★ 主前端（全部 UI + JS，約 215KB）
+│   ├── index.html              # ★ 主前端（全部 UI + JS，約 197KB）
 │   ├── data-personnel.js       # 人員清單快取（window.DATA_PERSONNEL）
 │   ├── data-stores.js          # 店舖主檔快取（window.DATA_STORES_MASTER）
 │   └── data-calendar.js        # RC 行事曆（window.DATA_CALENDAR_RC）
 ├── gas/
 │   ├── Code.gs                 # ★ GAS 主後端（路由 + 全部業務邏輯）
 │   └── Setup.gs                # GAS 初始化腳本（首次建立 Sheets 結構）
+├── src/
+│   └── worker.js               # Cloudflare Workers 後端（Cloud Run 部署用）
 ├── openspec/                   # IT 交接技術文件包
-│   ├── specs.md                # 系統規格書（SDD）
-│   ├── api-interface.md        # API 介面規格
-│   ├── data-model.sql          # 資料模型（PostgreSQL 參考版）
-│   └── script.js               # 核心邏輯說明
 ├── migrations/                 # Sheets 初始化 SQL 參考
 ├── .github/workflows/
-│   └── deploy.yml              # GitHub Actions CI/CD
+│   └── deploy.yml              # GitHub Actions CI/CD（僅 Pages）
+├── wrangler.toml               # Cloudflare Workers 設定
 ├── DEVELOP.md                  # ← 本文件（開發者技術手冊）
 ├── PROJECT_HANDOVER.md         # 專案交接文件
 └── README.md                   # 對外說明文件
@@ -97,7 +120,7 @@ labor-inspect-v2/
 ## 3. 環境設定（首次建置）
 
 ### 3.1 Google Sheets 建立
-1. 建立新的 Google 試算表（或使用現有）
+1. 建立新的 Google 試算表
 2. 記錄試算表 ID（URL 中的長字串）
 3. 在 `gas/Code.gs` 頂端設定 `SPREADSHEET_ID`
 
@@ -110,9 +133,14 @@ labor-inspect-v2/
 5. 部署 → 新增部署作業
    ・類型：網頁應用程式
    ・執行身份：我
-   ・存取權：所有人
+   ・存取權：所有人（含匿名使用者）
 6. 複製部署 URL
 ```
+
+> ⚠ **GAS 版本管理重要事項**：
+> - 每次修改 Code.gs 後，必須「管理部署 → 建立新版本 → 部署」才會生效
+> - 可從「管理部署」切換回舊版本（如穩定的 v51）
+> - 建議在確認新版本穩定前，先記錄目前穩定版本號
 
 ### 3.3 前端設定
 打開 `public/index.html`，找到第一個 `<script>` 區塊頂端：
@@ -120,13 +148,11 @@ labor-inspect-v2/
 const GAS_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
 const FOLDER_ID = 'YOUR_GOOGLE_DRIVE_FOLDER_ID'; // 照片上傳資料夾
 ```
-填入正確的 GAS URL 與 Drive 資料夾 ID。
 
 ### 3.4 GitHub Pages 啟用
 ```
 GitHub Repo → Settings → Pages → Source 選「GitHub Actions」
 ```
-首次 push main 後即自動發布。
 
 ---
 
@@ -134,16 +160,6 @@ GitHub Repo → Settings → Pages → Source 選「GitHub Actions」
 
 ### 前端修改
 ```bash
-# 直接編輯 public/index.html
-# 修改完成後語法檢查：
-python -c "
-import re; content=open('public/index.html',encoding='utf-8').read()
-s=content.find('<script>'); e=content.rfind('</script>')
-js=content[s+8:e]; open('temp.js','w',encoding='utf-8').write(js)
-"
-node --check temp.js  # 0 = 無語法錯誤
-
-# 確認無誤後推送
 git add public/index.html
 git commit -m "fix: 說明變更"
 git push origin main
@@ -152,23 +168,17 @@ git push origin main
 
 ### GAS 後端修改
 ```
-1. 編輯 gas/Code.gs
-2. 開啟 GAS 編輯器（script.google.com）
-3. 貼上新版內容
-4. 部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署
-   ⚠ 必須建立新版本，修改才會生效！URL 不變。
-5. 同步更新本地 gas/Code.gs 並 commit
+1. 編輯 gas/Code.gs（本地）
+2. 開啟 GAS 編輯器（script.google.com）→ 全選貼上新版內容
+3. 部署 → 管理部署 → 建立新版本 → 部署
+   ⚠ 必須建立新版本才生效！URL 不變。
+4. git commit gas/Code.gs 並 push
 ```
 
-### 靜態資料更新
-```bash
-# 人員資料更新後：
-# 1. 在 GAS 管理人員工號活頁
-# 2. 匯出新的 data-personnel.js（window.DATA_PERSONNEL = [...]）
-# 3. 替換 public/data-personnel.js
-# 4. git push
-
-# 店舖資料更新：替換 public/data-stores.js（window.DATA_STORES_MASTER = {...}）
+### GAS 版本回退
+```
+管理部署 → 選擇舊版本號 → 部署
+（無需改 Code.gs，只是切換已部署的版本）
 ```
 
 ---
@@ -178,81 +188,46 @@ git push origin main
 ### 5.1 關鍵全域變數
 ```javascript
 const GAS_URL = '...';              // GAS Web App URL
-const PERSONNEL = window.DATA_PERSONNEL || [];
-const STORES_MASTER = window.DATA_STORES_MASTER || {};
-const CALENDAR_RC = window.DATA_CALENDAR_RC || [];
-
-// 登入狀態
 let token = localStorage.getItem('ci_token');
 let currentUser = null;             // { id, username, role, full_name }
-
-// 點檢作業狀態
 let selectedStore = null;           // { code, name }
 let currentStoreType = 'RC';        // 'RC' | 'FC'
 let categories = [];                // 當月題目資料
 let answers = {};                   // { [question_id]: { opt_id, param, is_vio, skipped, note } }
 let photosByQ = {};                 // { [question_id]: [url, ...] }
-let paperPhotoData = null;          // 紙本點檢表照片 URL
 let execStatus = null;              // 'yes'|'no-docs'|'no-transfer'|'other'
-let mainStoreName = '';             // FC 主店店名（自由文字）
-let mainStoreCode = '';             // FC 主店店號
-let editingInspectionId = null;     // 編輯模式：記錄 ID；null = 新增模式
+let editingInspectionId = null;     // 編輯模式 ID；null = 新增模式
+let _isSubmitting = false;          // 防重複送出鎖
 ```
 
 ### 5.2 頁籤架構（4 個主 Tab）
-| Tab ID | 功能 | 說明 |
-|--------|------|------|
-| `basic` | 基本資料 | 選擇店鋪、設定點檢時間、查核作業狀態 |
-| `inspect` | 點檢作業 | 逐題作答、照片上傳、跳題邏輯 |
-| `records` | 查詢記錄 | 歷史記錄查詢、編輯、刪除 |
-| `summary` | 彙整專區 | Excel 匯出（週彙總表、請款明細） |
+| Tab | 功能 |
+|-----|------|
+| `basic` | 基本資料：選店、設定點檢時間、查核狀態 |
+| `inspect` | 點檢作業：逐題作答、照片上傳、跳題 |
+| `records` | 查詢記錄：歷史查詢、編輯、刪除 |
+| `summary` | 彙整專區：Excel 匯出 |
 
-### 5.3 核心流程
-```
-登入
-  └─ initLoginForm()          部別/課別/人員 下拉選單建立
-  └─ doLogin()                工號驗證，取得 token
-  └─ initApp()                載入題目、店舖資料
-
-新增點檢
-  └─ onStoreSelect()          選擇店鋪，判斷 RC/FC
-  └─ initAnswers()            初始化答案物件
-  └─ renderAllQuestions()     渲染題目 UI
-  └─ computeSkipped()         計算跳題集合
-  └─ submitInspection()       POST /api/inspections
-
-編輯點檢（editingInspectionId != null）
-  └─ editRecord(id)           載入現有資料
-  └─ goToInspectEdit(data)    還原題目狀態，顯示編輯橫幅
-  └─ submitInspection()       PUT /api/inspections/:id
-
-匯出 Excel
-  └─ exportWeekly()           週彙總表（RC + FC 分頁）
-  └─ exportPayClient()        請款明細（客戶版）
-  └─ exportPayInternal()      請款明細（內部版）
-  └─ fetchAllDetails()        批次取得所有答案
-```
-
-### 5.4 跳題邏輯實作
-```javascript
-function computeSkipped() {
-  // 1. 解析選項 label 中的「第N、M項無需點檢」
-  // 2. 比對 category.item_no 加入 skippedItemNos
-  // 3. 渲染時 opacity:0.45 + pointer-events:none
-}
-// 觸發時機：每次選項變動時呼叫
-```
-
-### 5.5 API 通訊（api() 函式）
+### 5.3 API 通訊（api() 函式）
 ```javascript
 async function api(path, method='GET', body=null) {
   const url = new URL(GAS_URL);
   url.searchParams.set('path', cleanPath);
-  url.searchParams.set('token', token);
-  // GET: 查詢參數附加到 URL
-  // POST/PUT/DELETE: body = JSON.stringify({ ...payload, _method: method })
-  //   payload < 1500 字元時同時寫入 URL param d（base64）作為備援
-  const r = await fetch(url.toString(), opts);
+  url.searchParams.set('token', token);   // token 放 URL 參數
+
+  // 30 秒逾時保護：避免 GAS 無回應時畫面永久卡住
+  const _ctrl = new AbortController();
+  const _tid = setTimeout(() => _ctrl.abort(), 30000);
+  opts.signal = _ctrl.signal;
+  try {
+    r = await fetch(url.toString(), opts);
+  } catch(e) {
+    clearTimeout(_tid);
+    if(e.name === 'AbortError') throw new Error('請求逾時（30s），請檢查網路或稍後再試');
+    throw e;
+  }
+  clearTimeout(_tid);
+
   const data = await r.json();
   if (data.code === 401) { doLogout(); throw new Error('連線已過期'); }
   if (data.error && data.code >= 400) throw new Error(data.error);
@@ -260,45 +235,53 @@ async function api(path, method='GET', body=null) {
 }
 ```
 
-### 5.6 編輯/刪除權限控制
+> **GAS 冷啟動說明**：GAS 伺服器有休眠機制，切換版本或長時間未使用後，
+> 第一次請求可能超過 30 秒觸發逾時。等 1 分鐘後再試，或在 GAS 編輯器手動執行任意函數強制熱機。
+
+### 5.4 展開明細（唯讀）
+`toggleRecordDetail()` 展開的明細面板為**純查詢**，任何人均可查看但不可修改：
+```javascript
+// 唯讀顯示：顯示 option_label 文字與照片，無 <select> 與儲存按鈕
+const ansLabel = a.skipped ? '（跳過）' : (a.option_label || '—');
+```
+
+### 5.5 編輯/刪除權限控制（checkEditPermission）
 ```javascript
 function checkEditPermission(r, action) {
   if (isToday(r.audit_date)) {
-    // 當日：auditor_id 比對，備援用 inspector_name 比對
-    // （auditor_id 若因 appendObj bug 存成時間戳，fallback 至姓名）
     const idOk = String(r.auditor_id) === String(currentUser?.id);
     const nameOk = r.inspector_name && currentUser?.username &&
                    String(r.inspector_name) === String(currentUser.username);
-    if (!idOk && !nameOk) {
-      alert(`當日點檢紀錄只能由上傳者本人（${r.inspector_name}）${action}`);
-      return false;
-    }
+    if (idOk || nameOk) return true;  // 本人直接通過
+    // 非本人：輸入密碼
+    const pw = prompt(`非上傳者操作，請輸入密碼（上傳者：${r.inspector_name || '未知'}）：`);
+    if (pw !== '9588') { alert('密碼錯誤'); return false; }
     return true;
   } else {
-    // 跨日：任何人輸入密碼 9588
+    // 跨日：任何人輸入密碼
     const pw = prompt(`跨日${action}需輸入密碼：`);
-    return pw === '9588';
+    if (pw !== '9588') { alert('密碼錯誤'); return false; }
+    return true;
   }
 }
 ```
 
-### 5.7 防重複送出鎖（_isSubmitting）
-網路不穩時，使用者可能在 GAS 回應前再次點「送出」，造成重複寫入。
+**密碼說明**：`9588` 為固定管理密碼，用於非上傳者操作當日記錄，或任何人操作跨日記錄。
+
+### 5.6 防重複送出鎖（_isSubmitting）
 ```javascript
-let _isSubmitting = false; // 全域鎖
+let _isSubmitting = false;
 
 async function submitInspection() {
-  if (_isSubmitting) { return; }  // 送出中直接忽略重複點擊
-  // ...驗證邏輯...
+  if (_isSubmitting) { return; }   // 送出中忽略重複點擊
   _isSubmitting = true;
-  showLoading('送出記錄中…');
+  showLoading(editingInspectionId ? '儲存修改中…' : '送出記錄中…');
   try {
     // ...API 呼叫...
   } catch(e) {
-    _isSubmitting = false; // 失敗時解鎖，允許重試
-    // ...錯誤提示...
+    hideLoading();
+    _isSubmitting = false;  // 失敗解鎖允許重試
   }
-  // 成功後 clearInspectForm() 會透過流程結束，鎖不需手動解（頁面重置）
 }
 ```
 
@@ -311,9 +294,8 @@ async function submitInspection() {
 function route(e, httpMethod) {
   const path = e.parameter.path;
   const body = JSON.parse(e.postData?.contents || '{}');
-  const method = body._method || httpMethod;  // PUT/DELETE 透過 _method 模擬
+  const method = body._method || httpMethod;  // PUT/DELETE 以 _method 模擬
   const user = getUser(e);                    // Token 驗證
-  // switch/if-else 依 path + method 路由到各 handler
 }
 ```
 
@@ -321,307 +303,255 @@ function route(e, httpMethod) {
 
 | 函式 | 說明 |
 |------|------|
-| `sheetToObjects(name)` | 讀取工作表，回傳 `[{col: value, ...}]` |
-| `appendObj(name, headers, obj)` | 新增一列（⚠ 依 Sheet 第一列實際欄位順序寫入）|
+| `sheetToObjects(name)` | 讀取工作表，回傳物件陣列 |
+| `appendObj(name, headers, obj)` | 新增一列（依 Sheet 第一列實際欄位順序）|
+| `getNextIdLocked(sheetName)` | 加鎖取得下一個 ID（防重複）|
 | `updateSheetRow(name, id, updates)` | 依 id 更新指定欄位 |
-| `deleteSheetRow(name, id)` | 刪除指定 id 的列 |
-| `getNextId(sheetName)` | 取得下一個自動遞增 ID |
-| `pad6(v)` | 店號補前導零至 6 碼 |
-| `toDateStr(v)` | Sheets Date 物件 → yyyy-MM-dd 字串 |
-| `toTimeStr(v)` | Sheets Time 物件 → HH:mm 字串 |
 | `makeToken(user)` | 產生 JWT-like Token（7 天有效）|
-| `now()` | 回傳台北時間字串（UTC+8）|
 
 ### 6.3 appendObj 重要說明
 ```javascript
-// ⚠ 以 Sheet 第一列實際欄位名稱決定寫入位置
-// 避免程式碼 headers 陣列順序與試算表欄位順序不一致
 function appendObj(sheetName, headers, obj) {
   const s = getSheet(sheetName);
-  const sheetHeaders = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+  const lastCol = s.getLastColumn();
+  // 空 Sheet 防呆：lastCol=0 時 getRange 會報錯
+  const sheetHeaders = lastCol > 0
+    ? s.getRange(1, 1, 1, lastCol).getValues()[0]
+    : headers;  // 備援使用傳入 headers
   const row = sheetHeaders.map(h => (obj[h] !== undefined ? obj[h] : ''));
   s.appendRow(row);
+  return obj.id;
 }
 ```
 
-### 6.4 批次答案查詢（效能優化）
+### 6.4 防重複 ID（getNextIdLocked）
+```javascript
+// 高並發時兩個請求同時讀取 lastRow，會取得相同 ID
+// 使用 LockService 串行化 ID 生成，解決重複 ID 問題
+function getNextIdLocked(sheetName) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return getNextId(sheetName); }
+  finally { lock.releaseLock(); }
+}
 ```
-POST /api/inspections/batch-answers
-  → handleGetBatchAnswers()
-  → 一次讀取 inspection_answers / questions / options 全表
-  → 以 inspection_id 分組回傳
-  → 避免 N 次逐筆 API 呼叫（匯出 10 筆 → 從 N+10 次降為 1 次）
-```
+
+### 6.5 GAS 活頁名稱（不可隨意改名）
+以下工作表名稱硬寫在 Code.gs 中，改名需同步更新程式碼並重新部署：
+
+| 活頁名稱 | 說明 |
+|---------|------|
+| `inspections` | 點檢主記錄 |
+| `inspection_answers` | 點檢答案 |
+| `categories` / `categories_FC` | RC/FC 類別 |
+| `questions` / `questions_FC` | RC/FC 題目 |
+| `options` / `options_FC` | RC/FC 選項 |
+| `stores` | 店鋪清單 |
+| `assigned_stores` | 應查名單 |
+| `audit_log` | 操作日誌 |
+| `users` | 帳號 |
+| `人員工號` | 人員清單（已是中文，勿改）|
 
 ---
 
 ## 7. Google Sheets 資料結構
 
-### 7.1 inspections（點檢記錄主表）
-| 欄位 | 類型 | 說明 |
-|------|------|------|
-| id | 整數 | 自動遞增主鍵 |
-| store_code | 文字 | 店號（6碼，含前導零） |
-| store_name | 文字 | 店名 |
-| store_type | 文字 | RC 或 FC |
-| audit_date | 日期 | 點檢日期（yyyy-MM-dd）|
-| audit_time | 時間 | 點檢時間（HH:mm）|
-| inspector_name | 文字 | 點檢人員姓名 |
-| section | 文字 | 課別 |
-| exec_status | 文字 | yes / no-docs / no-transfer / other |
-| exec_other | 文字 | 「其他」時的說明 |
-| has_violation | 0/1 | 是否有違規項目 |
-| paper_photo | 文字 | 紙本點檢表照片 URL |
-| main_store_name | 文字 | FC 提供資料的主店（「店號 店名」格式）|
-| auditor_id | 文字 | 上傳者工號（用於編輯權限比對）|
-| created_at | 文字 | 建立時間（UTC+8，yyyy-MM-dd HH:mm:ss）|
+### inspections（點檢主表）
+| 欄位 | 說明 |
+|------|------|
+| id | 自動遞增主鍵 |
+| store_code | 店號（6碼）|
+| store_name | 店名 |
+| store_type | RC / FC |
+| audit_date | 點檢日期（yyyy-MM-dd）|
+| audit_time | 點檢時間（HH:mm）|
+| inspector_name | 點檢人姓名 |
+| section | 課別 |
+| exec_status | yes / no-docs / no-transfer / other |
+| exec_other | 其他說明 |
+| has_violation | 0/1 |
+| paper_photo | 紙本點檢表照片 URL |
+| main_store_name | FC 主店（「店號 店名」格式）|
+| auditor_id | 上傳者工號 |
+| created_at | 建立時間（UTC+8）|
 
-### 7.2 inspection_answers（答題記錄）
-| 欄位 | 類型 | 說明 |
-|------|------|------|
-| id | 整數 | 自動遞增 |
-| inspection_id | 整數 | 關聯 inspections.id |
-| question_id | 整數 | 關聯 questions.id |
-| opt_id | 整數 | 關聯 options.id |
-| param_code | 文字 | 選項附帶參數 |
-| is_vio | 0/1 | 是否違規 |
-| skipped | 0/1 | 是否跳題 |
-| note | 文字 | 說明＋照片（格式：`文字|||url1|||url2`）|
-
-### 7.3 categories / questions / options（RC 題目）
-### categories_FC / questions_FC / options_FC（FC 題目）
-
-| 工作表 | 關鍵欄位 |
-|--------|---------|
-| categories | id / name / store_type / item_no / sort_order |
-| questions | id / category_id / content / condition_note / sort_order |
-| options | id / question_id / label / is_violation / param_code / skip_items |
-
-### 7.4 audit_log（異動稽核）
+### inspection_answers（答題記錄）
 | 欄位 | 說明 |
 |------|------|
 | id | 自動遞增 |
 | inspection_id | 關聯 inspections.id |
-| action | edit / delete |
-| changed_by | 操作人員（username）|
-| changed_at | 操作時間 |
-| store_name | 店名（刪除前先快取）|
-| note | 操作備註 |
+| question_id | 關聯 questions.id |
+| opt_id | 關聯 options.id |
+| is_vio | 是否違規 |
+| skipped | 是否跳題 |
+| note | `文字|||url1|||url2`（複合格式）|
+
+### exec_status 欄位說明
+| 值 | 意義 |
+|----|------|
+| `yes` | 有執行查核作業 |
+| `no-docs` | 無相關資料（未備置點檢所需文件）|
+| `no-transfer` | 當日轉換、未執行（非上傳失敗）|
+| `other` | 其他原因 |
 
 ---
 
 ## 8. API 端點總覽
 
-| Method | Path | Handler | 說明 |
-|--------|------|---------|------|
-| POST | /api/login | handleLogin | 工號登入 |
-| GET | /api/checklist | handleChecklist | 取得月份題目（?store_type=RC\|FC&month=6）|
-| POST | /api/upload-photo | handleUploadPhoto | 照片 base64 → Drive URL |
-| GET | /api/stores | handleGetStores | 店舖清單 |
-| POST | /api/stores | handleAddStore | 新增店舖 |
-| POST | /api/stores/batch | handleBatchStores | 批次新增/更新店舖 |
-| GET | /api/assigned-stores | handleGetAssigned | 取得應查店舖 |
-| POST | /api/assigned-stores | handleSetAssigned | 設定應查店舖 |
-| POST | /api/inspections/check | handleCheckDuplicate | 防重複建檔檢查 |
-| GET | /api/inspections | handleGetInspections | 查詢列表（?start_date&end_date&section）|
-| POST | /api/inspections | handleCreateInspection | 新增點檢記錄 |
-| GET | /api/inspections/:id | handleGetInspection | 取得單筆（含答案與 log）|
-| PUT | /api/inspections/:id | handleEditInspection | 修改點檢記錄 |
-| DELETE | /api/inspections/:id | handleDeleteInspection | 刪除點檢記錄 |
-| POST | /api/inspections/batch-answers | handleGetBatchAnswers | 批次取得答案（匯出用）|
-| GET | /api/users | handleGetUsers | 取得帳號列表 |
-| POST | /api/users | handleAddUser | 新增帳號 |
-| POST | /api/personnel/import | handleImportPersonnel | 批次匯入人員 |
-| POST | /api/questions | handleAddQuestion | 新增題目 |
-| PUT | /api/questions/:id | handleEditQuestion | 編輯題目 |
-| DELETE | /api/questions/:id | handleDeleteQuestion | 刪除題目 |
-| POST | /api/options | handleAddOption | 新增選項 |
-| PUT | /api/options/:id | handleEditOption | 編輯選項 |
-| DELETE | /api/options/:id | handleDeleteOption | 刪除選項 |
+| Method | Path | 說明 |
+|--------|------|------|
+| POST | /api/login | 工號登入 |
+| GET | /api/checklist | 取得月份題目 |
+| POST | /api/upload-photo | 照片 → Drive URL |
+| GET | /api/stores | 店鋪清單 |
+| POST | /api/stores | 新增店鋪 |
+| POST | /api/stores/batch | 批次新增/更新店鋪 |
+| GET | /api/assigned-stores | 取得應查店鋪 |
+| POST | /api/assigned-stores | 設定應查店鋪 |
+| POST | /api/inspections/check | 防重複建檔 |
+| GET | /api/inspections | 查詢列表 |
+| POST | /api/inspections | 新增點檢 |
+| GET | /api/inspections/:id | 取得單筆（含答案）|
+| PUT | /api/inspections/:id | 修改點檢 |
+| DELETE | /api/inspections/:id | 刪除點檢 |
+| POST | /api/inspections/batch-answers | 批次取得答案（匯出用）|
 
-> **PUT / DELETE 模擬**：GAS 只支援 GET/POST。PUT/DELETE 以 POST 傳遞 `_method` 欄位實現。
+> PUT/DELETE 透過 POST + `_method` 欄位模擬（GAS 不支援 PUT/DELETE）
 
 ---
 
 ## 9. 業務規則與邏輯
 
 ### 9.1 登入機制
-- username = password = **工號（8碼，不足補前導零）**
-- GAS 比對「人員工號」活頁，`normId(工號)` 去除前導零後比對
-- 成功後回傳 token（7天有效），存於 `localStorage['ci_token']`
-- 401 自動登出並清除 token
+- 帳號 = 密碼 = 工號（比對「人員工號」活頁）
+- Token 7 天有效，存於 `localStorage['ci_token']`
+- 401 自動登出
 
-### 9.2 店型判定
-```javascript
-// 自動依店名判定 RC / FC
-function detectStoreType(name) {
-  if (/加盟|FC/.test(name)) return 'FC';
-  return 'RC';  // 預設直營
-}
+### 9.2 照片壓縮規格
+```
+目標大小：800KB ~ 1200KB
+最大尺寸：1920px（長邊等比縮放）
+初始品質：0.92（JPEG）
+降品質步距：-0.1（超過 1200KB 時逐步降，最低 0.3）
 ```
 
-### 9.3 月份題目
-- 以**點檢日期**（非當日）判定月份，確保歷史記錄對應正確題組
-- `getInspectMonth(dateStr)` → 若超過 25 日，視為下個月的點檢
-
-### 9.4 FC 跳題邏輯
+### 9.3 note 複合欄位格式
 ```
-Q4 選項 label 含「第N、M項無需點檢」
-  → 解析 N, M（數字）
-  → 找出 category.item_no = N 或 M 的所有 question
-  → 這些 question 全部加入 skippedQids
-  → 渲染時灰化顯示，答案設為 skipped=1
+"缺失說明文字|||https://photo1.url|||https://photo2.url"
+split('|||') → [文字, ...照片URLs]
 ```
 
-### 9.5 FC 照片強制規則
-- 選項 label 含「現場無法判斷」→ 必須上傳照片才可提交
-- 提交前逐一檢查，缺少照片的題目標紅框並阻擋
-
-### 9.6 note 欄位格式（複合欄位）
+### 9.4 店鋪清單顯示邏輯
 ```
-inspection_answers.note = "缺失說明文字|||https://photo1.url|||https://photo2.url"
-                          ↑ 文字部分          ↑ 照片 URL（以 ||| 分隔）
+loadCalendarStores()
+  1. 呼叫 /api/assigned-stores?month=X&section=Y
+  2. 若有資料 → 顯示應查名單店鋪
+  3. 若無資料 → 備援使用 CALENDAR_RC 過濾 section
+  4. CALENDAR_RC 以「課」為 section（北一課、北二課...）
+     若使用者 section 不在其中（如「業務課」），備援也會是 0 間
+  → 解法：從維護 → 匯入應查名單
 ```
-前端讀取時：`note.split('|||')` → `[textNote, ...photoUrls]`
-
-### 9.7 main_store_name 格式（FC 主店）
-```
-main_store_name = "012345 台北東門店"  （店號 + 空格 + 店名）
-前端讀取：split(' ') → [code, ...nameParts]
-```
-
-### 9.8 Excel 匯出欄位對照
-
-**RC 週彙總表（RC_HEADERS，19 欄）**
-A: 上傳時間 / B: 店號 / C: 店名 / D: 點檢日期 / E: 點檢人員 / F: 課別 /
-G: 查核作業是否執行 / H-N: 各題答案 / O: 無法判斷說明 / P: 紀錄照片（URL）/
-Q: 未滿18歲 / R: 外籍週工時 / S: 完成照片
-
-**FC 週彙總表（FC_HEADERS，36 欄）**
-A-F: 基本資料 / G: 查核作業 / H-J: 0-1~0-3 / K-N: 各項資料準備 /
-O-AJ: 各點檢項目（主答案 + 無法判斷原因 + 照片）
 
 ---
 
 ## 10. 重要函式索引
 
-### 前端（index.html）
+### 前端
 | 函式 | 用途 |
 |------|------|
-| `initLoginForm()` | 登入頁部別/課別/人員下拉初始化 |
-| `doLogin()` | 執行工號登入驗證 |
+| `api(path, method, body)` | 統一 API 呼叫（含 30s timeout）|
+| `doLogin()` | 工號登入 |
 | `initApp()` | 登入後載入基礎資料 |
-| `onStoreSelect(code, name)` | 選擇店鋪，觸發題目載入 |
-| `renderAllQuestions()` | 渲染點檢題目 UI |
-| `computeSkipped()` | 計算跳題集合 |
-| `selectOpt(qid, optId)` | 選擇答案，觸發跳題/照片判斷 |
-| `submitInspection()` | 提交或更新點檢記錄 |
-| `editRecord(id)` | 載入既有記錄進入編輯模式 |
-| `goToInspectEdit(data)` | 還原點檢狀態至 inspect tab |
-| `cancelEdit()` | 取消編輯模式 |
-| `checkEditPermission(r, action)` | 當日本人/跨日密碼 權限檢查 |
-| `delRecord(id)` | 刪除點檢記錄（含權限檢查）|
-| `fetchAllDetails(execOnly)` | 批次取得所有答案（匯出用）|
-| `exportWeekly()` | 匯出週彙總表 Excel |
-| `exportPayClient()` | 匯出請款明細（客戶）|
-| `exportPayInternal()` | 匯出請款明細（內部）|
-| `buildWeeklyRow(r, ansMap, ...)` | 建立 RC 週彙總列 |
-| `buildFCRow(r, fcAns)` | 建立 FC 週彙總列 |
-| `searchMainStore(val)` | FC 主店搜尋（需從 STORES_MASTER 選取）|
-| `toTaipei(utcStr)` | UTC 字串 → 台北時間顯示（無效日期回傳空字串）|
-| `api(path, method, body)` | 統一 GAS API 呼叫 |
+| `autoDetectStoreType()` | 依當月題目自動判斷 RC/FC |
+| `loadCalendarStores()` | 載入應查店鋪清單 |
+| `submitInspection()` | 提交/更新點檢（含防重複鎖）|
+| `checkEditPermission(r, action)` | 編輯/刪除權限檢查 |
+| `toggleRecordDetail(id)` | 展開唯讀明細 |
+| `exportWeekly()` | 匯出週彙總表 |
+| `fetchAllDetails(execOnly)` | 批次取得答案（匯出前置）|
 
 ### 後端（Code.gs）
 | 函式 | 用途 |
 |------|------|
-| `route(e, httpMethod)` | 主路由函式 |
-| `handleLogin(body)` | 工號登入驗證 |
-| `handleGetInspections(params)` | 查詢點檢列表 |
-| `handleCreateInspection(body, user)` | 新增點檢記錄 |
-| `handleEditInspection(id, body, user)` | 修改點檢記錄 |
-| `handleDeleteInspection(id, body, user)` | 刪除點檢記錄 |
-| `handleGetBatchAnswers(body)` | 批次取得答案（效能優化）|
-| `appendObj(sheetName, headers, obj)` | 寫入列（依 Sheet 實際欄位順序）|
-| `sheetToObjects(sheetName)` | 讀取工作表為物件陣列 |
-| `ensureAnswersNoteColumn()` | 確保 note 欄位存在 |
+| `route(e, httpMethod)` | 主路由 |
+| `appendObj(sheetName, headers, obj)` | 寫入列（空 sheet 防呆）|
+| `getNextIdLocked(sheetName)` | 加鎖取得 ID（防重複）|
+| `sheetToObjects(sheetName)` | 讀取工作表 |
+| `handleCreateInspection(body, user)` | 新增點檢 |
+| `handleGetBatchAnswers(body)` | 批次答案（匯出優化）|
 
 ---
 
 ## 11. 常見問題 FAQ
 
 ### Q: 部別下拉是空的，無法登入
-**A**: 通常是 JavaScript 語法錯誤導致 `<script>` 整塊無法解析，
-`initLoginForm()` 未執行。排查步驟：
-1. 用 Node.js 語法檢查：`node --check temp_check.js`
-2. 確認 `const PERSONNEL = window.DATA_PERSONNEL || []` 非空
-3. 確認無 `const r` 重複宣告（`SyntaxError: Identifier already been declared`）
+**A**: JavaScript 語法錯誤導致整個 `<script>` 無法解析。
+排查：`node --check temp_check.js`，常見原因是 `const r` 重複宣告。
 
 ### Q: GAS 修改後沒有生效
-**A**: 必須在 GAS 編輯器「部署 → 管理部署作業 → 新版本 → 部署」，
-僅儲存不會更新 Web App。
+**A**: 必須「管理部署 → 建立新版本 → 部署」，僅儲存不會更新 Web App。
 
-### Q: 匯出週彙總表失敗（匯出失敗：a.note.includes is not a function）
-**A**: Google Sheets 某些 note 欄位被儲存為數字格式。
-前端 `fetchAllDetails()` 已使用 `String(a.note||'')` 強制轉型，
-確認已使用最新版 `index.html`。
+### Q: 載入店鋪時一直轉圈（30 秒後出現逾時提示）
+**A**: GAS 冷啟動問題，切換版本後第一次請求特別慢。
+解法：等 1 分鐘後再試，或進 GAS 編輯器手動執行任意函數強制熱機。
 
-### Q: 上傳時間顯示員工 ID（如 10305002）
-**A**: 舊資料的 `created_at` 欄位與 `auditor_id` 欄位對調（歷史資料問題）。
-`toTaipei()` 已修正為遇到無效日期值時回傳空字串。
-永久修法：在 Google Sheet 手動對調那幾筆的欄位值。
-新資料不會再發生（`appendObj` 已改為依 Sheet 實際欄位順序寫入）。
+### Q: 部署新版 GAS 後平台閃退（自動回到登入頁）
+**A**: 新版 Code.gs 有語法或執行期錯誤，GAS 回傳 HTML 錯誤頁，
+前端解析 JSON 失敗或收到 401 → 自動登出。
+解法：在 GAS 管理部署切回穩定的舊版本號。
 
-### Q: appendObj 寫入欄位順序錯誤
-**A**: 程式碼的 `headers` 陣列順序若與試算表實際欄位順序不符，資料會寫到錯欄。
-已修正 `appendObj` 改用 `s.getRange(1,1,1,lastCol).getValues()[0]`
-讀取 Sheet 第一列實際欄位名稱決定寫入位置。
+### Q: Cloud Run 版本登入後自動跳出
+**A**: `worker.js` 的 `auth()` 原本只讀 Authorization Header，
+但前端送 token 是 URL 參數 `?token=xxx`，導致所有需驗證的 API 回傳 401。
+已修正（2026-06-30）：`auth()` 現在優先讀 URL 參數，找不到才讀 Header。
+需請 IT 重新部署 Cloud Run。
 
-### Q: 網路不穩時同一家店出現兩筆重複記錄
-**A**: 送出時網路延遲，使用者再次點「送出」，兩個請求都在 GAS 寫入前通過重複檢查，
-導致兩筆資料落入 Sheets。
-已修正：`submitInspection()` 加入 `_isSubmitting` 鎖，送出期間忽略所有重複點擊。
-若已發生重複資料，由管理員輸入密碼（`9588`）刪除多餘那筆。
+### Q: 應查店鋪清單顯示 0 間
+**A**: 有兩個可能：
+1. 該月份的應查名單尚未匯入 → 到維護 → 匯入應查名單
+2. 使用者的 section（如「業務課」）不在 CALENDAR_RC 的備援清單中
+   → 只要匯入應查名單即可解決
 
 ### Q: 本人刪除自己當日記錄，卻顯示「只有本人才能刪除」
-**A**: `checkEditPermission()` 比對 `auditor_id` 時，若該欄位因 `appendObj` 欄位錯置
-而存入時間戳記（非員工 ID），比對必然失敗。
-已修正：加入 `inspector_name` 備援比對，`auditor_id` 或 `inspector_name` 任一吻合即可通過。
-根本修法：在 GAS 編輯器重新部署 `appendObj` 修正版，確保新資料寫入正確欄位。
+**A**: `auditor_id` 因舊版 `appendObj` 欄位錯置，存入時間戳記而非工號。
+已修正：`checkEditPermission` 加入 `inspector_name` 備援比對，
+`auditor_id` 或 `inspector_name` 任一吻合即可通過。
 
-### Q: 如何新增應查店舖
-**A**: 維護專區 → 應查店舖分頁 → 設定應查店舖，
-或直接在 `assigned_stores` 工作表維護。
+### Q: 匯出週彙總表失敗（a.note.includes is not a function）
+**A**: Sheets 的 note 欄位可能被儲存為數字。
+已修正：使用 `String(a.note || '')` 強制轉字串。
 
-### Q: 照片無法上傳
-**A**: 確認 `FOLDER_ID` 設定正確，且 GAS 執行帳號有該資料夾寫入權限。
-照片以 base64 傳給 GAS，GAS 寫入 Drive 後回傳 URL 儲存於 note 欄位。
+### Q: 重複記錄（同一家店出現兩筆）
+**A**: 網路不穩時重複點擊送出。已修正：`_isSubmitting` 鎖防止重複送出。
+若已有重複資料，由管理員（密碼 9588）刪除多餘那筆。
 
 ---
 
 ## 12. 版本異動記錄
 
-### v3.x（2026-06）
-- ✅ 修正 `submitInspection()` 加入 `_isSubmitting` 防重複送出鎖，解決網路不穩造成重複建檔
-- ✅ 修正 `checkEditPermission()` 加入 `inspector_name` 備援比對，修正本人無法刪除自身紀錄的矛盾
-- ✅ 修正 `appendObj` 依 Sheet 實際欄位順序寫入（防止欄位錯置）
-- ✅ 修正 `toTaipei()` 對無效日期值（如員工 ID）回傳空字串
-- ✅ 修正 `a.note.includes is not a function`（note 可能為數字，強制轉字串）
-- ✅ `exportWeekly()` 加入 showLoading 與 try/catch 錯誤提示
+### v3.3（2026-06-30）
+- ✅ `api()` 加入 30 秒 AbortController timeout，GAS 無回應時顯示逾時提示而非永久卡住
+- ✅ `appendObj()` 加入空 Sheet 防呆（`lastCol=0` 時使用傳入 headers 備援）
+- ✅ `worker.js auth()` 修正：同時接受 URL 參數 `?token=` 與 Authorization Header
+- ✅ GAS v54 準備：修正 `appendObj` 空 sheet 崩潰，待 IT 部署
+
+### v3.2（2026-06-18）
+- ✅ `toggleRecordDetail()` 展開明細改為純唯讀（移除 select 與儲存按鈕）
+- ✅ `checkEditPermission()` 開放非上傳者以密碼 9588 操作當日記錄
+- ✅ `checkEditPermission()` 加入 `inspector_name` 備援比對
+- ✅ `submitInspection()` 加入 `_isSubmitting` 防重複送出鎖
+- ✅ 新增 025968 中和員美店至 data-stores.js
+
+### v3.1（2026-06-12）
+- ✅ 修正 `submitInspection()` 防重複送出
+- ✅ 修正 `appendObj` 依 Sheet 實際欄位順序寫入（防 auditor_id/created_at 對調）
+- ✅ `getNextIdLocked()` 以 LockService 防並發重複 ID
 - ✅ 修正 `saveRecordAnswers()` 重複宣告 `const r`（SyntaxError）
-- ✅ 修正 `editRecord()` 使用未定義的 `pad6()`，改為 `padStart(6,'0')`
-- ✅ 新增 no-cache meta tag，防止瀏覽器快取舊版前端
+- ✅ 修正 `toTaipei()` 無效日期值回傳空字串
 
 ### v3.0（2026-05）
-- ✅ FC 主店店名改為從 STORES_MASTER 選取（必須為真實店舖）
-- ✅ 新增完整編輯流程（editRecord → goToInspectEdit → PUT submitInspection）
-- ✅ 新增編輯/刪除權限控制（當日本人 / 跨日密碼 9588）
-- ✅ FC 匯出新增「提供資料的主店店名」欄（J 欄，index 9）
-- ✅ FC 照片欄索引更新（因 J 欄插入後位移 +1）
-- ✅ 修正 FC 匯出「加班作業」分類關鍵字（RC `外籍` → FC `加班`）
-
-### v2.0（2026-05初）
-- ✅ 初始版本：RC/FC 雙題型點檢
-- ✅ 批次答案 API（batch-answers）
-- ✅ 週彙總表/請款明細匯出
-- ✅ 異動稽核（audit_log）
+- ✅ FC 點檢完整支援
+- ✅ 完整編輯/刪除流程（含跨日密碼）
+- ✅ Excel 週彙總表/請款明細匯出
 - ✅ GitHub Pages 自動部署
+- ✅ 批次答案 API（匯出效能優化）
