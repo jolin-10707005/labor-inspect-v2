@@ -3,7 +3,7 @@ const json=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,
 const err=(msg,s=400)=>json({error:msg},s);
 const makeToken=(u)=>btoa(unescape(encodeURIComponent(JSON.stringify({...u,exp:Date.now()+604800000}))));
 const parseToken=(t)=>{try{return JSON.parse(decodeURIComponent(escape(atob(t))));}catch{return null;}};
-function auth(req){const t=(req.headers.get('Authorization')||'').replace('Bearer ','');if(!t)return null;const p=parseToken(t);return p&&p.exp>Date.now()?p:null;}
+function auth(req,url){const t=url.searchParams.get('token')||(req.headers.get('Authorization')||'').replace('Bearer ','');if(!t)return null;const p=parseToken(t);return p&&p.exp>Date.now()?p:null;}
 
 export default{async fetch(req,env){try{
   const url=new URL(req.url),p=url.pathname,m=req.method;
@@ -30,7 +30,7 @@ export default{async fetch(req,env){try{
 
   // ── Photo Upload to R2 ──
   if(p==='/api/upload-photo'&&m==='POST'){
-    const user=auth(req);if(!user)return err('未授權',401);
+    const user=auth(req,url);if(!user)return err('未授權',401);
     if(!env.PHOTOS)return err('R2 not configured',500);
     const formData=await req.formData();
     const file=formData.get('file');
@@ -43,7 +43,7 @@ export default{async fetch(req,env){try{
     return json({url:`${bucketUrl}/${key}`,key});
   }
 
-  const user=auth(req);if(!user)return err('未授權',401);
+  const user=auth(req,url);if(!user)return err('未授權',401);
 
   // ── Stores ──
   if(p==='/api/stores'&&m==='GET'){const{results}=await db.prepare('SELECT * FROM stores WHERE active=1 ORDER BY code').all();return json(results);}
