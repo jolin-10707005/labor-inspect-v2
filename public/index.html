@@ -846,7 +846,7 @@ let token=localStorage.getItem('ci_token')||'';
 let currentUser=JSON.parse(localStorage.getItem('ci_user')||'null');
 
 // data from external scripts
-const PERSONNEL=window.DATA_PERSONNEL||[];
+let PERSONNEL=window.DATA_PERSONNEL||[];
 const CALENDAR_RC=window.DATA_CALENDAR_RC||[];
 const STORES_MASTER=window.DATA_STORES_MASTER||{};
 
@@ -1133,6 +1133,20 @@ function doLogout(){
 }
 
 // ─── INIT ───
+
+// 從 GAS 載入最新人員清單，覆蓋靜態 DATA_PERSONNEL
+async function loadPersonnel(){
+  try{
+    const res=await api('/api/personnel');
+    if(res.data&&res.data.length>0){
+      PERSONNEL.length=0;
+      PERSONNEL.push(...res.data);
+    }
+  }catch(e){
+    // 靜態 DATA_PERSONNEL 作為備援，不影響運作
+    console.warn('loadPersonnel: 使用靜態資料',e.message);
+  }
+}
 async function initApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
@@ -1144,6 +1158,7 @@ async function initApp(){
   document.getElementById('month-tag').textContent=getInspectMonth(document.getElementById('inspect-dt').value)+'月份';
   // 改為先只載店舖（題目交給 autoDetectStoreType 處理，避免重複 API 呼叫）
   apiStores=await cachedApi('/api/stores');
+  await loadPersonnel();
   categories=[]; // 先給空，autoDetectStoreType 會填
   buildDeptOptions();buildSectionFilters();initAnswers();
   // 自動帶入登入人員資料（部別/課別/姓名/工號），無法手動修改
@@ -3502,8 +3517,7 @@ function handlePersonnelUpload(e){
       try{
         await api('/api/personnel/import',{method:'POST',body:{rows}});
         // 成功後同步更新本地 PERSONNEL
-        PERSONNEL.length=0;
-        rows.forEach(r=>PERSONNEL.push({dept:r['部別'],section:r['課別'],id:r['工號'],name:r['姓名'],title:r['職稱']}));
+        await loadPersonnel();
         document.getElementById('m-personnel-count').textContent=PERSONNEL.length;
         renderPersonnelList();
         alert(`✅ 已成功上傳 ${rows.length} 筆人員資料至「人員工號」活頁`);

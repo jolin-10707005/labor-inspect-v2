@@ -243,6 +243,7 @@ function route(e, httpMethod) {
     }
 
     // 月份題目匯入
+    if (path === '/api/personnel' && method === 'GET') return handleGetPersonnel();
     if (path === '/api/personnel/import' && method === 'POST') return handleImportPersonnel(body);
     if (path === '/api/questions/import-month' && method === 'POST') return handleImportMonthQuestions(body);
 
@@ -882,6 +883,23 @@ function handleImportPersonnel(body) {
   s.getRange(2, 1, values.length, headers.length).setValues(values);
   return ok({ count: rows.length });
 }
+// ── 人員清單查詢 ──
+function handleGetPersonnel() {
+  const s = getSheet('人員工號');
+  if (!s) return fail('找不到「人員工號」活頁', 404);
+  const rows = sheetToObjects('人員工號');
+  const data = rows.map(function(r) {
+    return {
+      dept:    r['部別'] || '',
+      section: r['課別'] || '',
+      id:      String(r['工號'] || ''),
+      name:    r['姓名'] || '',
+      title:   r['職稱'] || ''
+    };
+  }).filter(function(r){ return r.id && r.name; });
+  return ok({ data: data });
+}
+
 
 // ── 題目管理 ──
 function handleAddQuestion(body) {
