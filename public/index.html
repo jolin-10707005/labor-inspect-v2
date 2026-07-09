@@ -1135,12 +1135,20 @@ function doLogout(){
 // ─── INIT ───
 
 // 從 GAS 載入最新人員清單，覆蓋靜態 DATA_PERSONNEL
+// 使用 raw fetch（不走 api()）避免 GAS 未知路由回傳 401 觸發自動登出
 async function loadPersonnel(){
   try{
-    const res=await api('/api/personnel');
-    if(res.data&&res.data.length>0){
+    const url=new URL(GAS_URL);
+    url.searchParams.set('path','/api/personnel');
+    url.searchParams.set('token',token);
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),10000);
+    const r=await fetch(url.toString(),{signal:ctrl.signal});
+    clearTimeout(tid);
+    const d=await r.json();
+    if(d&&d.data&&Array.isArray(d.data)&&d.data.length>0){
       PERSONNEL.length=0;
-      PERSONNEL.push(...res.data);
+      PERSONNEL.push(...d.data);
     }
   }catch(e){
     // 靜態 DATA_PERSONNEL 作為備援，不影響運作
