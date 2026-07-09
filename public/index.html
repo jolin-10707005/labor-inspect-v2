@@ -4122,7 +4122,8 @@ function onInspectDtPartsChange(field){
 initLoginForm();
 initInspectDtPicker();
 // 頁面載入時，背景從 GAS 取最新人員（不阻塞登入表單）
-loadPersonnel().then(()=>initLoginForm()).catch(()=>{});
+// 注意：不在 .then() 呼叫 initLoginForm()，避免使用者填表單中途被清空
+loadPersonnel().catch(()=>{});
 if(token&&currentUser){
   // 舊 token 可能過期，initApp 失敗時清掉 token 回到登入頁（不閃退）
   initApp().catch(e=>{
