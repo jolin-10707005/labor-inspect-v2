@@ -1166,7 +1166,6 @@ async function initApp(){
   document.getElementById('month-tag').textContent=getInspectMonth(document.getElementById('inspect-dt').value)+'月份';
   // 改為先只載店舖（題目交給 autoDetectStoreType 處理，避免重複 API 呼叫）
   apiStores=await cachedApi('/api/stores');
-  await loadPersonnel();
   categories=[]; // 先給空，autoDetectStoreType 會填
   buildDeptOptions();buildSectionFilters();initAnswers();
   // 自動帶入登入人員資料（部別/課別/姓名/工號），無法手動修改
@@ -4122,7 +4121,18 @@ function onInspectDtPartsChange(field){
 // ─── BOOT ───
 initLoginForm();
 initInspectDtPicker();
-if(token&&currentUser)initApp();
+// 頁面載入時，背景從 GAS 取最新人員（不阻塞登入表單）
+loadPersonnel().then(()=>initLoginForm()).catch(()=>{});
+if(token&&currentUser){
+  // 舊 token 可能過期，initApp 失敗時清掉 token 回到登入頁（不閃退）
+  initApp().catch(e=>{
+    console.warn('[boot] initApp failed, clearing session:',e.message);
+    token='';currentUser=null;
+    localStorage.removeItem('ci_token');localStorage.removeItem('ci_user');
+    document.getElementById('login-screen').style.display='flex';
+    document.getElementById('app').style.display='none';
+  });
+}
 </script>
 </body>
 </html>
